@@ -1,0 +1,74 @@
+let num = 10;
+let arr = [];
+
+/*
+ * Add 2 numbers
+ */
+fn add(a, b) {
+	return a + b;
+}
+
+/*
+fn number_to_string(n) {
+	s = match n {
+		0: "zero";
+		1: "one";
+		2: "two";
+		3: "three";
+		_: "a lot";
+	}
+
+	return s;
+}
+*/
+
+fn main() {
+	println(num);
+	println(number_to_string(num));
+
+	/*
+	let double = fn(n) { return 2 * n; }
+	println(double(num));
+	*/
+
+	if num > 0 && num <= 10 {
+		println(num, " is between 1 and 10");
+	}
+
+	arr.push(1);
+	arr.push(2);
+	arr.push(3);
+
+	for x in arr {
+		print(x, " ");
+	}
+
+	println();
+
+	let long_variable_name = null;
+
+	let expression = (3 * 11 + 3 * 12) * (3 * 15 + 11);
+
+	for i in 0:arr.len() {
+		if i % 2 == 0 {
+			println(arr[i], " is even");
+		} else {
+			println(arr[i], " is odd");
+		}
+	}
+
+	let a = 5, b = 10;
+	let sum = add(a, b);
+
+	// print sum
+	println("Sum of ", a, " and ", b, " equals ", sum);
+
+	let person = {
+		"name": "Alice",
+		"age": 30,
+		"is_student": false
+	};
+
+	println(person["name"], ", age ", person["age"]);
+}
+

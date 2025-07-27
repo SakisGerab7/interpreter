@@ -1,0 +1,81 @@
+/*
+    Multiline comment.
+    Should be ignored.
+*/
+
+// Print literals
+disp "hello world";
+disp true;
+disp 2 + 1;
+
+// Expressions with mixed types and parentheses
+let a = 3 + " + " + 5 + " = " + (3 + 5);
+disp a;
+
+// Uninitialized variable
+let b;
+disp b;  // should be null
+
+// Assignments and reassignments
+b = 1;
+disp b;
+disp b = 2;
+disp b = a;
+
+// Shadowing and scoping
+let x = "tralala";
+{
+    let x = "tralalero";
+    disp x;  // inner x
+}
+disp x;      // outer x
+
+// Conditionals with else
+if x != null {
+    disp x;
+} else {
+    disp "ti kaneis reeee";
+}
+
+// Conditionals without else
+if b == a {
+    disp "b equals a";
+}
+if b != a {
+    disp "b does not equal a";
+}
+
+// Truthy / falsy checks
+if true {
+    disp "this is true";
+}
+if false {
+    disp "this won't show";
+}
+if null {
+    disp "null is falsy";
+}
+if 0 {
+    disp "zero should be falsy";
+} else {
+    disp "zero is falsy";
+}
+
+// Block execution with nested blocks
+{
+    disp "Start nested";
+    {
+        let msg = "Deep block";
+        disp msg;
+    }
+    disp "End nested";
+}
+
+// More math and precedence
+let result = 1 + 2 * 3 - 4 / 2;
+disp result;
+
+// Assignment as expressions
+let c;
+disp c = 10;
+disp c = c + 5;
