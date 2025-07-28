@@ -61,3 +61,13 @@ struct IfStmt : public Stmt {
     void exec(Interpreter &interp) const override { interp.execute_if(*this); }
     virtual std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_if(*this); }
 };
+
+struct WhileStmt : public Stmt {
+    ExprPtr condition;
+    StmtPtr body;
+
+    WhileStmt(ExprPtr condition, StmtPtr body) : condition(std::move(condition)), body(std::move(body)) {}
+
+    void exec(Interpreter &interp) const override { interp.execute_while(*this); }
+    virtual std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_while(*this); }
+};

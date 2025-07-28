@@ -31,7 +31,7 @@ let x = "tralala";
 disp x;      // outer x
 
 // Conditionals with else
-if x != null {
+if x != null && x != "brbrpatapim" {
     disp x;
 } else {
     disp "ti kaneis reeee";
@@ -79,3 +79,9 @@ disp result;
 let c;
 disp c = 10;
 disp c = c + 5;
+
+for let i = 5; i > 0; i = i - 1 {
+    disp i + "!";
+}
+
+disp 1 + pow(2, number_four());

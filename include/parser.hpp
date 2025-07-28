@@ -20,16 +20,22 @@ private:
     StmtPtr disp_statement();
     StmtPtr block();
     StmtPtr if_statement();
+    StmtPtr while_statement();
+    StmtPtr for_statement();
     StmtPtr expr_statement();
 
     ExprPtr expression();
     ExprPtr assignment();
+    ExprPtr logic_or();
+    ExprPtr logic_and();
     ExprPtr equality();
     ExprPtr comparison();
     ExprPtr term();
     ExprPtr factor();
     ExprPtr unary();
+    ExprPtr call();
     ExprPtr primary();
+    ExprPtr array_literal();
 
     template <typename... Args>
     bool match(Args... args);

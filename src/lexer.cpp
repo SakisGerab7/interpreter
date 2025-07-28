@@ -89,6 +89,7 @@ void Lexer::next_identifier() {
         { "true",   TokenType::True     },
         { "false",  TokenType::False    },
         { "for",    TokenType::For      },
+        { "in",     TokenType::In       },
         { "while",  TokenType::While    },
         { "if",     TokenType::If       },
         { "else",   TokenType::Else     },

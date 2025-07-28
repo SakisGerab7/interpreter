@@ -39,6 +39,10 @@ std::string AstPrinter::print_binary(const BinaryExpr &expr) {
     return parenthesize(colored(expr.Op.Value, Color::Op), expr.Left.get(), expr.Right.get());
 }
 
+std::string AstPrinter::print_logical(const LogicalExpr &expr) {
+    return parenthesize(colored(expr.Op.Value, Color::Op), expr.Left.get(), expr.Right.get());
+}
+
 std::string AstPrinter::print_unary(const UnaryExpr &expr) {
     return parenthesize(colored(expr.Op.Value, Color::Op), expr.Right.get());
 }
@@ -66,10 +70,23 @@ std::string AstPrinter::print_assignment(const AssignExpr &expr) {
 std::string AstPrinter::print_call(const CallExpr &expr) {
     std::vector<const Expr*> args;
     args.push_back(expr.Callee.get());
-    for (const auto& arg : expr.Args) {
+    for (const auto &arg : expr.Args) {
         args.push_back(arg.get());
     }
     return parenthesize(colored("call", Color::Keyword), args);
+}
+
+std::string AstPrinter::print_array(const ArrayExpr &expr) {
+    std::vector<const Expr*> elements;
+    for (const auto &element : expr.Elements) {
+        elements.push_back(element.get());
+    }
+
+    return parenthesize(colored("array", Color::Keyword), elements);
+}
+
+std::string AstPrinter::print_index(const IndexExpr &expr) {
+    return parenthesize(colored("index", Color::Keyword), expr.Target.get(), expr.Index.get());
 }
 
 //===================== Statements =====================//
@@ -113,6 +130,18 @@ std::string AstPrinter::print_if(const IfStmt &stmt) {
         } else {
             out << ")";
         }
+    }
+
+    return out.str();
+}
+
+std::string AstPrinter::print_while(const WhileStmt &stmt) {
+    std::stringstream out;
+    out << indent() << "(" << colored("while", Color::Keyword) << " " << print(*stmt.condition) << "\n";
+
+    {
+        IndentGuard guard(indent_level);
+        out << print(*stmt.body) << ")";
     }
 
     return out.str();

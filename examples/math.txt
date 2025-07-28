@@ -1,0 +1,62 @@
+disp "Math & Logic Demo";
+
+let count = 5;
+disp "Countdown:";
+
+for let i = count; i > 0; i = i - 1 {
+    disp i;
+    let start = clock();
+    while clock() < start + 1 {}
+}
+
+disp "Go!";
+
+let angle = pi / 4;
+disp "Angle in radians:";
+disp angle;
+
+let s = sin(angle);
+let c = cos(angle);
+disp "sin(angle):";
+disp s;
+disp "cos(angle):";
+disp c;
+
+let h = pow(2, 3); // 2^3 = 8
+disp "2^3 = ";
+disp h;
+
+disp "Generating 5 random numbers between 10 and 20:";
+for let i = 0; i < 5; i = i + 1 {
+    disp randint(10, 20);
+}
+
+disp "Rolling a die until we hit a 6...";
+let result = 0;
+let rolls = 0;
+while result != 6 {
+    result = randint(1, 6);
+    rolls = rolls + 1;
+    disp result;
+    let wait = clock();
+    while clock() < wait + 0.5 {}
+}
+
+disp "It took ";
+disp rolls;
+disp " roll(s) to get a 6.";
+
+disp "Testing truthy values:";
+let values = [0, 1, "", "hello", false, true];
+
+for let i = 0; i < 6; i = i + 1 {
+    let v = values[i];
+    if v {
+        disp "Truthy:";
+    } else {
+        disp "Falsy:";
+    }
+    disp v;
+}
+
+disp "Done.";

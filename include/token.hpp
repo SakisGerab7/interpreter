@@ -50,6 +50,7 @@ enum class TokenType {
     True,
     False,
     For,
+    In,
     While,
     If,
     Else,

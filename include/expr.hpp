@@ -25,6 +25,17 @@ struct BinaryExpr : public Expr {
     std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_binary(*this); }
 };
 
+struct LogicalExpr : public Expr {
+    ExprPtr Left, Right;
+    Token Op;
+
+    LogicalExpr(ExprPtr left, Token op, ExprPtr right)
+        : Left(std::move(left)), Op(op), Right(std::move(right)) {}
+
+    Value eval(Interpreter &interp) const override { return interp.eval_logical(*this); }
+    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_logical(*this); }
+};
+
 struct UnaryExpr : public Expr {
     ExprPtr Right;
     Token Op;
@@ -82,6 +93,24 @@ struct CallExpr : public Expr {
     CallExpr(ExprPtr callee, std::vector<ExprPtr> args)
         : Callee(std::move(callee)), Args(std::move(args)) {}
 
-    Value eval(Interpreter &interp) const override { return {}; }
+    Value eval(Interpreter &interp) const override { return interp.eval_call(*this); }
     std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_call(*this); }
+};
+
+struct ArrayExpr : public Expr {
+    std::vector<ExprPtr> Elements;
+
+    ArrayExpr(std::vector<ExprPtr> elements) : Elements(std::move(elements)) {}
+
+    Value eval(Interpreter &interp) const override { return interp.eval_array(*this); }
+    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_array(*this); }
+};
+
+struct IndexExpr : public Expr {
+    ExprPtr Target, Index;
+
+    IndexExpr(ExprPtr target, ExprPtr index) : Target(std::move(target)), Index(std::move(index)) {}
+
+    Value eval(Interpreter &interp) const override { return interp.eval_index(*this); }
+    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_index(*this); }
 };
