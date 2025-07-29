@@ -78,9 +78,10 @@ struct VariableExpr : public Expr {
 struct AssignExpr : public Expr {
     Token Name;
     ExprPtr Val;
+    Token Op;
 
-    AssignExpr(Token name, ExprPtr value)
-        : Name(name), Val(std::move(value)) {}
+    AssignExpr(Token name, ExprPtr value, Token op)
+        : Name(name), Val(std::move(value)), Op(op) {}
 
     Value eval(Interpreter &interp) const override { return interp.eval_assignment(*this); }
     std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_assignment(*this); }

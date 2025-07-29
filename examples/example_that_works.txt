@@ -8,6 +8,11 @@ disp "hello world";
 disp true;
 disp 2 + 1;
 
+disp len("bruh");
+
+let X = [1, 2, 3, 4, 5, 6];
+disp len(X);
+
 // Expressions with mixed types and parentheses
 let a = 3 + " + " + 5 + " = " + (3 + 5);
 disp a;

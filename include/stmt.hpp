@@ -52,22 +52,34 @@ struct BlockStmt : public Stmt {
 };
 
 struct IfStmt : public Stmt {
-    ExprPtr condition;
+    ExprPtr Condition;
     StmtPtr then_branch, else_branch;
 
     IfStmt(ExprPtr condition, StmtPtr then_branch, StmtPtr else_branch)
-        : condition(std::move(condition)), then_branch(std::move(then_branch)), else_branch(std::move(else_branch)) {}
+        : Condition(std::move(condition)), then_branch(std::move(then_branch)), else_branch(std::move(else_branch)) {}
 
     void exec(Interpreter &interp) const override { interp.execute_if(*this); }
     virtual std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_if(*this); }
 };
 
 struct WhileStmt : public Stmt {
-    ExprPtr condition;
-    StmtPtr body;
+    ExprPtr Condition;
+    StmtPtr Body;
 
-    WhileStmt(ExprPtr condition, StmtPtr body) : condition(std::move(condition)), body(std::move(body)) {}
+    WhileStmt(ExprPtr condition, StmtPtr body) : Condition(std::move(condition)), Body(std::move(body)) {}
 
     void exec(Interpreter &interp) const override { interp.execute_while(*this); }
     virtual std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_while(*this); }
+};
+
+struct FunctionStmt : public Stmt {
+    Token Name;
+    std::vector<Token> Params;
+    StmtPtr Body;
+
+    FunctionStmt(Token name, std::vector<Token> params, StmtPtr body)
+        : Name(name), Params(std::move(params)), Body(std::move(body)) {}
+
+    void exec(Interpreter &interp) const override { interp.execute_function(*this); }
+    virtual std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_function(*this); }
 };

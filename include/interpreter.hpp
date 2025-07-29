@@ -8,6 +8,7 @@ class Stmt;
 class ExprStmt;
 class DispStmt;
 class LetStmt;
+class FunctionStmt;
 class BlockStmt;
 class IfStmt;
 class WhileStmt;
@@ -40,9 +41,12 @@ struct Interpreter {
     void execute_expr(const ExprStmt &stmt);
     void execute_disp(const DispStmt &stmt);
     void execute_let(const LetStmt &stmt);
+    void execute_function(const FunctionStmt &stmt);
     void execute_block(const BlockStmt &stmt);
     void execute_if(const IfStmt &stmt);
     void execute_while(const WhileStmt &stmt);
+    
+    void execute_block(const BlockStmt &statements, std::shared_ptr<Environment> new_env);
 
     Value evaluate(const Expr &expr);
 

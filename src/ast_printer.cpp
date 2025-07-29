@@ -64,7 +64,8 @@ std::string AstPrinter::print_variable(const VariableExpr &expr) {
 }
 
 std::string AstPrinter::print_assignment(const AssignExpr &expr) {
-    return parenthesize(colored("assign ", Color::Keyword) + colored(expr.Name.Value, Color::Ident), expr.Val.get());
+    return parenthesize(colored("assign ", Color::Keyword) + colored(expr.Op.Value, Color::Op) + " "
+                        + colored(expr.Name.Value, Color::Ident), expr.Val.get());
 }
 
 std::string AstPrinter::print_call(const CallExpr &expr) {
@@ -73,6 +74,7 @@ std::string AstPrinter::print_call(const CallExpr &expr) {
     for (const auto &arg : expr.Args) {
         args.push_back(arg.get());
     }
+
     return parenthesize(colored("call", Color::Keyword), args);
 }
 
@@ -103,23 +105,42 @@ std::string AstPrinter::print_let(const LetStmt &stmt) {
     return indent() + parenthesize(colored("let ", Color::Keyword) + colored(stmt.Name.Value, Color::Ident), stmt.Initializer.get());
 }
 
-std::string AstPrinter::print_block(const BlockStmt &stmt) {
+std::string AstPrinter::print_function(const FunctionStmt &stmt) {
     std::stringstream out;
-    out << indent() << "(" << colored("block", Color::Keyword) << "\n";
+
+    out << indent() << "(" << colored("fn ", Color::Keyword) << colored(stmt.Name.Value, Color::Ident) << "(";
+
+    for (size_t i = 0; i < stmt.Params.size(); i++) {
+        out << colored(stmt.Params[i].Value, Color::Ident) << ((i + 1 < stmt.Params.size()) ? " " : ")\n");
+    }
 
     {
         IndentGuard guard(indent_level);
-        for (size_t i = 0; i < stmt.Statements.size(); ++i) {
-            out << print(*stmt.Statements[i]) << ((i + 1 < stmt.Statements.size()) ? "\n" : ")");
-        }
+        out << print(*stmt.Body) << ")";
     }
 
     return out.str();
 }
 
+std::string AstPrinter::print_block(const BlockStmt &stmt) {
+    std::stringstream out;
+    out << indent() << "(" << colored("block", Color::Keyword);
+
+    if (!stmt.Statements.empty()) {
+        IndentGuard guard(indent_level);
+
+        for (const auto &s : stmt.Statements) {
+            out << "\n" << print(*s);
+        }
+    }
+
+    out << ")";
+    return out.str();
+}
+
 std::string AstPrinter::print_if(const IfStmt &stmt) {
     std::stringstream out;
-    out << indent() << "(" << colored("if", Color::Keyword) << " " << print(*stmt.condition) << "\n";
+    out << indent() << "(" << colored("if", Color::Keyword) << " " << print(*stmt.Condition) << "\n";
 
     {
         IndentGuard guard(indent_level);
@@ -137,11 +158,11 @@ std::string AstPrinter::print_if(const IfStmt &stmt) {
 
 std::string AstPrinter::print_while(const WhileStmt &stmt) {
     std::stringstream out;
-    out << indent() << "(" << colored("while", Color::Keyword) << " " << print(*stmt.condition) << "\n";
+    out << indent() << "(" << colored("while", Color::Keyword) << " " << print(*stmt.Condition) << "\n";
 
     {
         IndentGuard guard(indent_level);
-        out << print(*stmt.body) << ")";
+        out << print(*stmt.Body) << ")";
     }
 
     return out.str();

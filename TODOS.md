@@ -33,7 +33,7 @@
 * [x] String concatenation (`+`)
 * [ ] Ternary expression (`cond ? then : else`)
 * [ ] Bitwise (`&`, `|`, `^`, `~`, `<<`, `>>`)
-* [ ] Compound assignment (`+=`, `-=`, `*=`, etc.)
+* [x] Compound assignment (`+=`, `-=`, `*=`, etc.)
 * [ ] Exponentiation (`**`)
 * [ ] Type casting (`as`)
 * [ ] Type coercion and runtime type errors

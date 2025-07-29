@@ -10,9 +10,13 @@ namespace NativeFunctions {
         return static_cast<int>(std::time(nullptr));
     }
 
-    Value len(Interpreter&, const std::vector<Value>& args) {
-        const std::string& s = args[0].as_string();
-        return static_cast<int>(s.length());
+    Value len(Interpreter&, const std::vector<Value> &args) {
+        if (args[0].is_array())
+            return static_cast<int>(args[0].as_array().size());
+        if (args[0].is_string())
+            return static_cast<int>(args[0].as_string().size());
+
+        return Value();
     }
 
     Value str(Interpreter&, const std::vector<Value>& args) {
@@ -199,13 +203,18 @@ void Interpreter::execute_let(const LetStmt &stmt) {
     Curr->define(stmt.Name.Value, initializer);
 }
 
-void Interpreter::execute_block(const BlockStmt &stmt) {
-    std::shared_ptr<Environment> prev = Curr;
-    Curr = std::make_shared<Environment>(Curr.get());
+void Interpreter::execute_function(const FunctionStmt &stmt) {
+    Curr->define(stmt.Name.Value, std::make_shared<Callable>(&stmt));
+}
 
+void Interpreter::execute_block(const BlockStmt &stmt, std::shared_ptr<Environment> new_env) {
+    std::shared_ptr<Environment> prev = Curr;
+    
     try {
+        Curr = new_env;
+
         for (const StmtPtr &s : stmt.Statements) {
-            s->exec(*this);
+            execute(*s);
         }
         
         Curr = prev;
@@ -215,8 +224,12 @@ void Interpreter::execute_block(const BlockStmt &stmt) {
     }
 }
 
+void Interpreter::execute_block(const BlockStmt &stmt) {
+    execute_block(stmt, std::make_shared<Environment>(Curr.get()));
+}
+
 void Interpreter::execute_if(const IfStmt &stmt) {
-    if (evaluate(*stmt.condition).is_truthy()) {
+    if (evaluate(*stmt.Condition).is_truthy()) {
         execute(*stmt.then_branch);
     } else if (stmt.else_branch) {
         execute(*stmt.else_branch);
@@ -224,8 +237,8 @@ void Interpreter::execute_if(const IfStmt &stmt) {
 }
 
 void Interpreter::execute_while(const WhileStmt &stmt) {
-    while (evaluate(*stmt.condition).is_truthy()) {
-        execute(*stmt.body);
+    while (evaluate(*stmt.Condition).is_truthy()) {
+        execute(*stmt.Body);
     }
 }
 
@@ -238,51 +251,17 @@ Value Interpreter::eval_binary(const BinaryExpr &expr) {
     Value right = evaluate(*expr.Right);
 
     switch (expr.Op.Type) {
-        case TokenType::Plus:
-            if ((left.is_int() || left.is_float()) && (right.is_int() || right.is_float())) {
-                if (left.is_float() || right.is_float())
-                    return left.as_float() + right.as_float();
-                else
-                    return left.as_int() + right.as_int();
-            }
-
-            return left.to_string() + right.to_string();
-        case TokenType::Minus:
-            if (left.is_float() || right.is_float())
-                return left.as_float() - right.as_float();
-            else
-                return left.as_int() - right.as_int();
-        case TokenType::Mult:
-            if (left.is_float() || right.is_float())
-                return left.as_float() * right.as_float();
-            else
-                return left.as_int() * right.as_int();
-        case TokenType::Div:
-            return left.as_float() / right.as_float();
-        case TokenType::Mod:
-            return static_cast<int>(left.as_int() % right.as_int());
-        case TokenType::Greater:
-            if (left.is_float() || right.is_float())
-                return left.as_float() > right.as_float();
-            else
-                return left.as_int() > right.as_int();
-        case TokenType::GreaterEqual:
-            if (left.is_float() || right.is_float())
-                return left.as_float() >= right.as_float();
-            else
-                return left.as_int() >= right.as_int();
-        case TokenType::Less:
-            if (left.is_float() || right.is_float())
-                return left.as_float() < right.as_float();
-            else
-                return left.as_int() < right.as_int();
-        case TokenType::LessEqual:
-            if (left.is_float() || right.is_float())
-                return left.as_float() <= right.as_float();
-            else
-                return left.as_int() <= right.as_int();
-        case TokenType::Equal:    return left == right;
-        case TokenType::NotEqual: return !(left == right);
+        case TokenType::Plus:         return left +  right;
+        case TokenType::Minus:        return left -  right;
+        case TokenType::Mult:         return left *  right;
+        case TokenType::Div:          return left /  right;
+        case TokenType::Mod:          return left %  right;
+        case TokenType::Greater:      return left >  right;
+        case TokenType::GreaterEqual: return left >= right;
+        case TokenType::Less:         return left <  right;
+        case TokenType::LessEqual:    return left <= right;
+        case TokenType::Equal:        return left == right;
+        case TokenType::NotEqual:     return left != right;
     }
 
     throw std::runtime_error("Unknown binary operator: " + expr.Op.Value);
@@ -300,12 +279,9 @@ Value Interpreter::eval_logical(const LogicalExpr &expr) {
 Value Interpreter::eval_unary(const UnaryExpr &expr) {
     Value right = evaluate(*expr.Right);
 
-    if (expr.Op.Type == TokenType::Not) {
-        return !right.is_truthy();
-    } else if (expr.Op.Type == TokenType::Minus) {
-        if (right.is_int())   return -right.as_int();
-        if (right.is_float()) return -right.as_float();
-        throw std::runtime_error("Unary '-' requires a number");
+    switch (expr.Op.Type) {
+        case TokenType::Not:   return logical_not(right);
+        case TokenType::Minus: return -right;
     }
 
     throw std::runtime_error("Unknown unary operator: " + expr.Op.Value);
@@ -316,7 +292,25 @@ Value Interpreter::eval_variable(const VariableExpr &expr) {
 }
 
 Value Interpreter::eval_assignment(const AssignExpr &expr) {
-    Value val = evaluate(*expr.Val);
+    Value val;
+    
+    if (expr.Op.Type == TokenType::Assign) {
+        val = evaluate(*expr.Val);
+    } else {
+        Value left = Curr->get(expr.Name);
+        Value right = evaluate(*expr.Val);
+
+        switch (expr.Op.Type) {
+            case TokenType::PlusEqual:  val = left + right; break;
+            case TokenType::MinusEqual: val = left - right; break;
+            case TokenType::MultEqual:  val = left * right; break;
+            case TokenType::DivEqual:   val = left / right; break;
+            case TokenType::ModEqual:   val = left % right; break;
+            default:
+                throw std::runtime_error("Unsupported compound assignment: " + expr.Op.Value);
+        }
+    }
+
     Curr->assign(expr.Name, val);
     return val;
 }

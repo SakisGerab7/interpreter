@@ -18,6 +18,7 @@ class Stmt;
 class ExprStmt;
 class DispStmt;
 class LetStmt;
+class FunctionStmt;
 class BlockStmt;
 class IfStmt;
 class WhileStmt;
@@ -50,6 +51,7 @@ struct AstPrinter {
     std::string print_expr(const ExprStmt &stmt);
     std::string print_disp(const DispStmt &stmt);
     std::string print_let(const LetStmt &stmt);
+    std::string print_function(const FunctionStmt &stmt);
     std::string print_block(const BlockStmt &stmt);
     std::string print_if(const IfStmt &stmt);
     std::string print_while(const WhileStmt &stmt);

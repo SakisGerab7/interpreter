@@ -36,6 +36,7 @@ std::vector<StmtPtr> Parser::parse() {
 
 StmtPtr Parser::declaration() {
     if (match(TokenType::Let)) return var_declaration();
+    if (match(TokenType::Function)) return func_declaration();
     return statement();
 }
 
@@ -49,6 +50,32 @@ StmtPtr Parser::var_declaration() {
     
     consume(TokenType::Semicolon, "Expect ';' after variable declaration.");
     return std::make_unique<LetStmt>(name, std::move(initializer));
+}
+
+StmtPtr Parser::func_declaration() {
+    Token name = consume(TokenType::Identifier, "Expect function name.");
+    
+    consume(TokenType::LeftParen, "Expect '(' after function name.");
+
+    std::vector<Token> params;
+
+    if (!check(TokenType::RightParen)) {
+        do {
+            if (params.size() >= 255) {
+                std::cerr << "[Parse Error] Line " << peek().Line << " at '" << peek().Value
+                    << "': Can't have more than 255 parameters.\n";
+            }
+
+            params.push_back(consume(TokenType::Identifier, "Expect parameter name."));
+        } while (match(TokenType::Comma));
+    }
+
+    consume(TokenType::RightParen, "Expect ')' after parameters.");
+    consume(TokenType::LeftCurly, "Expect '{' before function body.");
+
+    StmtPtr body = block();
+
+    return std::make_unique<FunctionStmt>(name, std::move(params), std::move(body));
 }
 
 StmtPtr Parser::statement() {
@@ -139,11 +166,14 @@ ExprPtr Parser::expression() {
 ExprPtr Parser::assignment() {
     ExprPtr expr = logic_or();
 
-    if (match(TokenType::Assign)) {
+    if (match(TokenType::Assign, TokenType::PlusEqual, TokenType::MinusEqual,
+              TokenType::MultEqual, TokenType::DivEqual, TokenType::ModEqual))
+    {
+        Token op = previous();
         ExprPtr val = assignment();
         
         if (VariableExpr *var_expr = dynamic_cast<VariableExpr *>(expr.get())) {
-            return std::make_unique<AssignExpr>(var_expr->Name, std::move(val));
+            return std::make_unique<AssignExpr>(var_expr->Name, std::move(val), op);
         }
         
         std::cerr << "[Parse Error] Line " << peek().Line << " at '" << peek().Value << "': Invalid assignment target.\n";

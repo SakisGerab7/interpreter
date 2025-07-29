@@ -1,7 +1,6 @@
 #pragma once
 
 #include "common.hpp"
-#include "interpreter.hpp"
 
 struct Callable;
 
@@ -17,7 +16,6 @@ struct Value {
     Value(std::shared_ptr<Callable> c) : Data(std::move(c)) {}
     Value(std::vector<Value> v)        : Data(std::move(v)) {}
 
-    // === Type Checks ===
     bool is_null()     const { return !Data.has_value(); }
     bool is_int()      const { return Data.type() == typeid(int); }
     bool is_float()    const { return Data.type() == typeid(double); }
@@ -26,7 +24,6 @@ struct Value {
     bool is_callable() const { return Data.type() == typeid(std::shared_ptr<Callable>); }
     bool is_array()    const { return Data.type() == typeid(std::vector<Value>); }
 
-    // === Accessors ===
     int as_int() const {
         if (is_int()) return std::any_cast<int>(Data);
         if (is_float()) return static_cast<int>(std::any_cast<double>(Data));
@@ -59,7 +56,6 @@ struct Value {
         throw std::runtime_error("Value is not an array");
     }
 
-    // === to_string for Display ===
     std::string to_string() const {
         if (is_int())      return std::to_string(as_int());
         if (is_float())    return std::to_string(as_float());
@@ -69,20 +65,8 @@ struct Value {
         return "null";
     }
 
-    // === Equality ===
-    bool operator==(const Value& other) const {
-        if (Data.type() != other.Data.type()) return false;
-        if (is_int())      return as_int()      == other.as_int();
-        if (is_float())    return as_float()    == other.as_float();
-        if (is_bool())     return as_bool()     == other.as_bool();
-        if (is_string())   return as_string()   == other.as_string();
-        if (is_callable()) return as_callable() == other.as_callable();
-        return true;
-    }
-
-    // === Truthiness Check ===
     bool is_truthy() const {
-        if (is_int())      return as_int()   != 0;
+        if (is_int())      return as_int() != 0;
         if (is_float())    return as_float() != 0;
         if (is_bool())     return as_bool();
         if (is_string())   return !as_string().empty();
@@ -91,3 +75,22 @@ struct Value {
         return false;
     }
 };
+
+Value operator+(const Value &lhs, const Value &rhs);
+Value operator-(const Value &lhs, const Value &rhs);
+Value operator*(const Value &lhs, const Value &rhs);
+Value operator/(const Value &lhs, const Value &rhs);
+Value operator%(const Value &lhs, const Value &rhs);
+
+Value operator-(const Value &v);
+
+bool operator==(const Value &lhs, const Value &rhs);
+bool operator!=(const Value &lhs, const Value &rhs);
+bool operator<(const Value &lhs, const Value &rhs);
+bool operator<=(const Value &lhs, const Value &rhs);
+bool operator>(const Value &lhs, const Value &rhs);
+bool operator>=(const Value &lhs, const Value &rhs);
+
+bool logical_and(const Value &lhs, const Value &rhs);
+bool logical_or(const Value &lhs, const Value &rhs);
+bool logical_not(const Value &v);

@@ -16,6 +16,7 @@ struct Parser {
 private:
     StmtPtr declaration();
     StmtPtr var_declaration();
+    StmtPtr func_declaration();
     StmtPtr statement();
     StmtPtr disp_statement();
     StmtPtr block();

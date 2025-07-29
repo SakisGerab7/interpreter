@@ -1,12 +1,16 @@
+fn sleep(n) {
+    let t = clock();
+    while clock() < t + n {}
+}
+
 disp "Math & Logic Demo";
 
 let count = 5;
 disp "Countdown:";
 
-for let i = count; i > 0; i = i - 1 {
+for let i = count; i > 0; i -= 1 {
     disp i;
-    let start = clock();
-    while clock() < start + 1 {}
+    sleep(1);
 }
 
 disp "Go!";
@@ -27,7 +31,7 @@ disp "2^3 = ";
 disp h;
 
 disp "Generating 5 random numbers between 10 and 20:";
-for let i = 0; i < 5; i = i + 1 {
+for let i = 0; i < 5; i += 1 {
     disp randint(10, 20);
 }
 
@@ -49,7 +53,7 @@ disp " roll(s) to get a 6.";
 disp "Testing truthy values:";
 let values = [0, 1, "", "hello", false, true];
 
-for let i = 0; i < 6; i = i + 1 {
+for let i = 0; i < len(values); i += 1 {
     let v = values[i];
     if v {
         disp "Truthy:";
