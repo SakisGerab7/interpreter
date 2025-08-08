@@ -4,38 +4,47 @@
 
 enum class TokenType {
     // Symbol tokens
-    LeftParen,    // (
-    RightParen,   // )
-    LeftBracket,  // [
-    RightBracket, // ]
-    LeftCurly,    // {
-    RightCurly,   // }
+    LeftParen,     // (
+    RightParen,    // )
+    LeftBracket,   // [
+    RightBracket,  // ]
+    LeftCurly,     // {
+    RightCurly,    // }
 
-    Comma,        // ,
-    Dot,          // .
-    Semicolon,    // ;
+    Comma,         // ,
+    Dot,           // .
+    Semicolon,     // ;
+    Questionmark,  // ?
+    Colon,         // :
     
-    Plus,         // +
-    Minus,        // -
-    Mult,         // *
-    Div,          // /
-    Mod,          // %
-    Not,          // !
-    And,          // &&
-    Or,           // ||
-    Greater,      // > 
-    Less,         // <
+    Plus,          // +
+    Minus,         // -
+    Mult,          // *
+    Div,           // /
+    Mod,           // %
+    Not,           // !
+    And,           // &&
+    Or,            // ||
+    Greater,       // > 
+    Less,          // <
+
+    BitNot,        // ~
+    BitAnd,        // &
+    BitOr,         // |
+    BitXor,        // ^
+    BitShiftLeft,  // <<
+    BitShiftRight, // >>
     
-    Assign,       // =
-    Equal,        // ==
-    NotEqual,     // !=
-    PlusEqual,    // +=
-    MinusEqual,   // -=
-    MultEqual,    // *=
-    DivEqual,     // /=
-    ModEqual,     // %=
-    GreaterEqual, // >=
-    LessEqual,    // <=
+    Assign,        // =
+    Equal,         // ==
+    NotEqual,      // !=
+    PlusEqual,     // +=
+    MinusEqual,    // -=
+    MultEqual,     // *=
+    DivEqual,      // /=
+    ModEqual,      // %=
+    GreaterEqual,  // >=
+    LessEqual,     // <=
 
     // Literal tokens
     Identifier,
@@ -63,11 +72,11 @@ enum class TokenType {
 };
 
 struct Token {
-    TokenType Type;
-    std::string Value;
+    std::string_view Value;
     size_t Line;
+    TokenType Type;
 
-    Token(TokenType type, const std::string &value, size_t line)
+    Token(TokenType type, std::string_view value, size_t line)
         : Type(type), Value(value), Line(line) {}
 
     friend std::ostream &operator<<(std::ostream &os, const Token &token) {

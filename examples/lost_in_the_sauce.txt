@@ -1,0 +1,22 @@
+// Big expression with arithmetic, logic, comparisons, function calls, and ternaries
+let result1 = (
+    ((a + b * c - d / e % f) >= (g - h + i)) &&
+    ((j < k * (l + m)) || (func1(1, 2, 3) == array[5])) ?
+        (another_func(x, y, z + 1, array2[index - 2]) + (true && false || null)) :
+        (someVal = !(1 + 2 * (3 + 4 / (5 - 6))) != (stringVar != "hello world"))
+);
+
+// Another massive expression with more assignments and deeply nested ternaries
+let result2 = value = func(
+    x = a + b * c + d - e / f % g,
+    y = ((x > y ? z : w) + (q == r && s || t)),
+    z = (arr1[func2(4)] += arr2[arr3[3]] *= (flag ? 42 : 0)),
+    last = !(!(!(true || false && null))) ? 999 : "end"
+);
+
+// Yet another huge one, chaining calls and indexing with expressions
+let result3 = func3(
+    arr[0](func(a + b * c, d - e / f)),
+    matrix[i][j + 1] + (((complex + crazy) * (nested - madness)) / more),
+    (((((deep + deeper) * deepest)))) - 42
+) + (flag ? otherFunc("string", 3.14, true, null) : finalValue % 7 + 1);

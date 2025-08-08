@@ -4,13 +4,13 @@
 #include "token.hpp"
 
 struct Lexer {
-    std::string source;
-    std::vector<Token> tokens;
-    size_t start = 0, current = 0, line = 1;
+    std::string_view Src;
+    std::vector<Token> &Tokens;
+    size_t Start = 0, Curr = 0, Line = 1;
 
-    Lexer (const std::string &src) : source(src) {}
+    Lexer(std::string_view src, std::vector<Token> &tokens) : Src(src), Tokens(tokens) {}
 
-    std::vector<Token> tokenize();
+    void tokenize();
 
 private:
     void next_token();
@@ -24,7 +24,7 @@ private:
     bool match(char c);
 
     void add_token(TokenType type);
-    void add_token(TokenType type, const std::string& value);
+    void add_token(TokenType type, std::string_view value);
 
     char peek();
     char peek_next();

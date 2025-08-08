@@ -55,6 +55,11 @@ Value operator-(const Value &v) {
     throw std::runtime_error("Unary '-' operator requires a numeric value.");
 }
 
+Value operator~(const Value &v) {
+    if (v.is_int()) return ~v.as_int();
+    throw std::runtime_error("Unsupported type for '~'");
+}
+
 bool operator==(const Value &lhs, const Value &rhs) {
     if (lhs.is_null() && rhs.is_null()) return true;
     if (lhs.is_null() || rhs.is_null()) return false;
@@ -113,14 +118,44 @@ bool operator>=(const Value &lhs, const Value &rhs) {
     return !(lhs < rhs);
 }
 
-bool logical_and(const Value &lhs, const Value &rhs) {
+bool operator&&(const Value &lhs, const Value &rhs) {
     return lhs.is_truthy() && rhs.is_truthy();
 }
 
-bool logical_or(const Value &lhs, const Value &rhs) {
+bool operator||(const Value &lhs, const Value &rhs) {
     return lhs.is_truthy() || rhs.is_truthy();
 }
 
-bool logical_not(const Value &v) {
+bool operator!(const Value &v) {
     return !v.is_truthy();
+}
+
+Value operator|(const Value &lhs, const Value &rhs) {
+    if (lhs.is_int() && rhs.is_int())
+        return lhs.as_int() | rhs.as_int();
+    throw std::runtime_error("Unsupported types for '|'");
+}
+
+Value operator^(const Value &lhs, const Value &rhs) {
+    if (lhs.is_int() && rhs.is_int())
+        return lhs.as_int() ^ rhs.as_int();
+    throw std::runtime_error("Unsupported types for '^'");
+}
+
+Value operator&(const Value &lhs, const Value &rhs) {
+    if (lhs.is_int() && rhs.is_int())
+        return lhs.as_int() & rhs.as_int();
+    throw std::runtime_error("Unsupported types for '&'");
+}
+
+Value operator<<(const Value &lhs, const Value &rhs) {
+    if (lhs.is_int() && rhs.is_int())
+        return lhs.as_int() << rhs.as_int();
+    throw std::runtime_error("Unsupported types for '<<'");
+}
+
+Value operator>>(const Value &lhs, const Value &rhs) {
+    if (lhs.is_int() && rhs.is_int())
+        return lhs.as_int() >> rhs.as_int();
+    throw std::runtime_error("Unsupported types for '>>'");
 }

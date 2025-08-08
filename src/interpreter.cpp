@@ -3,6 +3,7 @@
 #include "token.hpp"
 #include "stmt.hpp"
 #include "callable.hpp"
+#include "return_exception.hpp"
 
 namespace NativeFunctions {
 
@@ -167,8 +168,6 @@ Interpreter::Interpreter() {
     Globals->define("exp",     std::make_shared<Callable>(1, NativeFunctions::Math::exp));
 
     Globals->define("pi", M_PI);
-
-
 }
 
 void Interpreter::interpret(const std::vector<StmtPtr> &statements)
@@ -182,8 +181,20 @@ void Interpreter::interpret(const std::vector<StmtPtr> &statements)
     }
 }
 
+template<class... Ts> struct Overloaded : Ts... { using Ts::operator()...; };
+template<class... Ts> Overloaded(Ts...) -> Overloaded<Ts...>;
+
 void Interpreter::execute(const Stmt &stmt) {
-    stmt.exec(*this);
+    std::visit(Overloaded{
+        [&](const ExprStmt &s)     { execute_expr(s);     },
+        [&](const DispStmt &s)     { execute_disp(s);     },
+        [&](const LetStmt &s)      { execute_let(s);      },
+        [&](const BlockStmt &s)    { execute_block(s);    },
+        [&](const IfStmt &s)       { execute_if(s);       },
+        [&](const WhileStmt &s)    { execute_while(s);    },
+        [&](const FunctionStmt &s) { execute_function(s); },
+        [&](const ReturnStmt &s)   { execute_return(s);   }
+    }, stmt);
 }
 
 void Interpreter::execute_expr(const ExprStmt &stmt) {
@@ -191,7 +202,8 @@ void Interpreter::execute_expr(const ExprStmt &stmt) {
 }
 
 void Interpreter::execute_disp(const DispStmt &stmt) {
-    std::cout << evaluate(*stmt.expr).to_string() << "\n";
+    Value value = evaluate(*stmt.expr);
+    std::cout << value.to_string() << "\n";
 }
 
 void Interpreter::execute_let(const LetStmt &stmt) {
@@ -218,9 +230,9 @@ void Interpreter::execute_block(const BlockStmt &stmt, std::shared_ptr<Environme
         }
         
         Curr = prev;
-    } catch (...) {
+    } catch (const ReturnException &e) {
         Curr = prev;
-        throw;
+        throw e;
     }
 }
 
@@ -229,7 +241,7 @@ void Interpreter::execute_block(const BlockStmt &stmt) {
 }
 
 void Interpreter::execute_if(const IfStmt &stmt) {
-    if (evaluate(*stmt.Condition).is_truthy()) {
+    if (evaluate(*stmt.Condition)) {
         execute(*stmt.then_branch);
     } else if (stmt.else_branch) {
         execute(*stmt.else_branch);
@@ -237,13 +249,35 @@ void Interpreter::execute_if(const IfStmt &stmt) {
 }
 
 void Interpreter::execute_while(const WhileStmt &stmt) {
-    while (evaluate(*stmt.Condition).is_truthy()) {
+    while (evaluate(*stmt.Condition)) {
         execute(*stmt.Body);
     }
 }
 
+void Interpreter::execute_return(const ReturnStmt &stmt) {
+    Value val;
+    if (stmt.Val) {
+        val = evaluate(*stmt.Val);
+    }
+
+    throw ReturnException(val);
+}
+
 Value Interpreter::evaluate(const Expr &expr) {
-    return expr.eval(*this);
+    return std::visit(Overloaded{
+        [&](const BinaryExpr &e)   { return eval_binary(e);     },
+        [&](const LogicalExpr &e)  { return eval_logical(e);    },
+        [&](const UnaryExpr &e)    { return eval_unary(e);      },
+        [&](const GroupingExpr &e) { return eval_grouping(e);   },
+        [&](const LiteralExpr &e)  { return eval_literal(e);    },
+        [&](const VariableExpr &e) { return eval_variable(e);   },
+        [&](const AssignExpr &e)   { return eval_assignment(e); },
+        [&](const CallExpr &e)     { return eval_call(e);       },
+        [&](const ArrayExpr &e)    { return eval_array(e);      },
+        [&](const ObjectExpr &e)   { return eval_object(e);     },
+        [&](const IndexExpr &e)    { return eval_index(e);      },
+        [&](const TernaryExpr &e)  { return eval_ternary(e);    }
+    }, expr);
 }
 
 Value Interpreter::eval_binary(const BinaryExpr &expr) {
@@ -251,20 +285,25 @@ Value Interpreter::eval_binary(const BinaryExpr &expr) {
     Value right = evaluate(*expr.Right);
 
     switch (expr.Op.Type) {
-        case TokenType::Plus:         return left +  right;
-        case TokenType::Minus:        return left -  right;
-        case TokenType::Mult:         return left *  right;
-        case TokenType::Div:          return left /  right;
-        case TokenType::Mod:          return left %  right;
-        case TokenType::Greater:      return left >  right;
-        case TokenType::GreaterEqual: return left >= right;
-        case TokenType::Less:         return left <  right;
-        case TokenType::LessEqual:    return left <= right;
-        case TokenType::Equal:        return left == right;
-        case TokenType::NotEqual:     return left != right;
+        case TokenType::Plus:          return left +  right;
+        case TokenType::Minus:         return left -  right;
+        case TokenType::Mult:          return left *  right;
+        case TokenType::Div:           return left /  right;
+        case TokenType::Mod:           return left %  right;
+        case TokenType::Greater:       return left >  right;
+        case TokenType::GreaterEqual:  return left >= right;
+        case TokenType::Less:          return left <  right;
+        case TokenType::LessEqual:     return left <= right;
+        case TokenType::Equal:         return left == right;
+        case TokenType::NotEqual:      return left != right;
+        case TokenType::BitOr:         return left |  right;
+        case TokenType::BitXor:        return left ^  right;
+        case TokenType::BitAnd:        return left &  right;
+        case TokenType::BitShiftLeft:  return left << right;
+        case TokenType::BitShiftRight: return left >> right;
     }
 
-    throw std::runtime_error("Unknown binary operator: " + expr.Op.Value);
+    throw std::runtime_error("Unknown binary operator: " + std::string(expr.Op.Value));
 }
 
 Value Interpreter::eval_logical(const LogicalExpr &expr) {
@@ -280,11 +319,20 @@ Value Interpreter::eval_unary(const UnaryExpr &expr) {
     Value right = evaluate(*expr.Right);
 
     switch (expr.Op.Type) {
-        case TokenType::Not:   return logical_not(right);
-        case TokenType::Minus: return -right;
+        case TokenType::Not:    return !right;
+        case TokenType::Minus:  return -right;
+        case TokenType::BitNot: return ~right;
     }
 
-    throw std::runtime_error("Unknown unary operator: " + expr.Op.Value);
+    throw std::runtime_error("Unknown unary operator: " + std::string(expr.Op.Value));
+}
+
+Value Interpreter::eval_grouping(const GroupingExpr &expr) {
+    return evaluate(*expr.Grouped);
+}
+
+Value Interpreter::eval_literal(const LiteralExpr& expr) {
+    return expr.Lit;
 }
 
 Value Interpreter::eval_variable(const VariableExpr &expr) {
@@ -297,7 +345,7 @@ Value Interpreter::eval_assignment(const AssignExpr &expr) {
     if (expr.Op.Type == TokenType::Assign) {
         val = evaluate(*expr.Val);
     } else {
-        Value left = Curr->get(expr.Name);
+        Value left = evaluate(*expr.Target);
         Value right = evaluate(*expr.Val);
 
         switch (expr.Op.Type) {
@@ -307,12 +355,44 @@ Value Interpreter::eval_assignment(const AssignExpr &expr) {
             case TokenType::DivEqual:   val = left / right; break;
             case TokenType::ModEqual:   val = left % right; break;
             default:
-                throw std::runtime_error("Unsupported compound assignment: " + expr.Op.Value);
+                throw std::runtime_error("Unsupported compound assignment: " + std::string(expr.Op.Value));
         }
     }
 
-    Curr->assign(expr.Name, val);
+    if (auto var_expr = std::get_if<VariableExpr>(expr.Target.get())) {
+        Curr->assign(var_expr->Name, val);
+    } else if (auto index_expr = std::get_if<IndexExpr>(expr.Target.get())) {
+        Value index = evaluate(*index_expr->Index);
+        assign_index(index_expr->Target.get(), index, val);
+    } else {
+        throw std::runtime_error("Invalid assignment target");
+    }
+
     return val;
+}
+
+void Interpreter::assign_index(const Expr *target_expr, const Value &index, const Value &val) {
+    Value container = evaluate(*target_expr);
+
+    if (container.is_array() && index.is_int()) {
+        int i = index.as_int();
+        container.set_index(i, val);
+    } else if (container.is_object() && index.is_string()) {
+        std::string key = index.as_string();
+        container.set_index(key, val);
+    } else {
+        throw std::runtime_error("Target is not indexable");
+    }
+
+    if (auto var_expr = std::get_if<VariableExpr>(target_expr)) {
+        // std::cout << "name: " << var_expr->Name.Value << " value: " << container.to_string() << "\n";
+        Curr->assign(var_expr->Name, container);
+    } else if (auto index_expr = std::get_if<IndexExpr>(target_expr)) {
+        Value parent_index = evaluate(*index_expr->Index);
+        assign_index(index_expr->Target.get(), parent_index, container);
+    } else {
+        throw std::runtime_error("Invalid assignment target in assign_index");
+    }
 }
 
 Value Interpreter::eval_call(const CallExpr &expr) {
@@ -333,27 +413,60 @@ Value Interpreter::eval_array(const ArrayExpr &expr) {
         values.push_back(evaluate(*element));
     }
 
-    return Value(values);
+    return values;
+}
+
+Value Interpreter::eval_object(const ObjectExpr &expr) {
+    std::unordered_map<std::string, std::shared_ptr<Value>> items;
+    for (const auto &[key, value] : expr.Items) {
+        items[key] = std::make_shared<Value>(evaluate(*value));
+    }
+
+    return items;
 }
 
 Value Interpreter::eval_index(const IndexExpr &expr) {
     Value target = evaluate(*expr.Target);
     Value index = evaluate(*expr.Index);
 
-    if (!target.is_array()) {
-        throw std::runtime_error("Can only index arrays.");
+    if (target.is_array()) {
+        if (!index.is_int()) {
+            throw std::runtime_error("Array index must be an integer.");
+        }
+
+        const std::vector<Value> &arr = target.as_array();
+        int i = index.as_int();
+
+        if (i < 0 || i >= static_cast<int>(arr.size())) {
+            throw std::runtime_error("Index out of bounds.");
+        }
+
+        return arr[i];
     }
 
-    if (!index.is_int()) {
-        throw std::runtime_error("Array index must be an integer.");
+    if (target.is_object()) {
+        if (!index.is_string()) {
+            throw std::runtime_error("Object keys must be strings.");
+        }
+
+        const auto &obj = target.as_object();
+        const std::string &key = index.as_string();
+
+        auto it = obj.find(key);
+        if (it == obj.end()) {
+            throw std::runtime_error("Key '" + key + "' not found in object.");
+        }
+
+        return *it->second;
     }
 
-    const std::vector<Value> &arr = target.as_array();
-    int i = index.as_int();
+    throw std::runtime_error("Can only index arrays or objects.");
+}
 
-    if (i < 0 || i >= static_cast<int>(arr.size())) {
-        throw std::runtime_error("Index out of bounds.");
+Value Interpreter::eval_ternary(const TernaryExpr &expr) {
+    if (evaluate(*expr.Condition)) {
+        return evaluate(*expr.Left);
     }
 
-    return arr[i];
+    return evaluate(*expr.Right);
 }

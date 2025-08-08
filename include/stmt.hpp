@@ -1,85 +1,69 @@
 #pragma once
 
 #include "common.hpp"
-#include "interpreter.hpp"
 #include "value.hpp"
 #include "expr.hpp"
 
-struct Stmt {
-    virtual ~Stmt() = default;
-    virtual void exec(Interpreter &interp) const = 0;
-    virtual std::string print(AstPrinter &ast_printer) const = 0;
-};
+struct ExprStmt;
+struct DispStmt;
+struct LetStmt;
+struct BlockStmt;
+struct IfStmt;
+struct WhileStmt;
+struct FunctionStmt;
+struct ReturnStmt;
+
+using Stmt = std::variant<
+    ExprStmt,
+    DispStmt,
+    LetStmt,
+    BlockStmt,
+    IfStmt,
+    WhileStmt,
+    FunctionStmt,
+    ReturnStmt
+>;
 
 using StmtPtr = std::unique_ptr<Stmt>;
 
-struct ExprStmt : public Stmt {
+template<typename T, typename... Args>
+StmtPtr make_stmt(Args&&... args) {
+    return std::make_unique<Stmt>(T{std::forward<Args>(args)...});
+}
+
+struct ExprStmt {
     ExprPtr expr;
-
-    ExprStmt(ExprPtr expr) : expr(std::move(expr)) {}
-
-    void exec(Interpreter &interp) const override { interp.execute_expr(*this); }
-    virtual std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_expr(*this); }
-
 };
 
-struct DispStmt : public Stmt {
+struct DispStmt {
     ExprPtr expr;
-
-    DispStmt(ExprPtr expr) : expr(std::move(expr)) {}
-
-    void exec(Interpreter &interp) const override { interp.execute_disp(*this); }
-    virtual std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_disp(*this); }
 };
 
-struct LetStmt : public Stmt {
+struct LetStmt {
     Token Name;
     ExprPtr Initializer;
-
-    LetStmt(Token name, ExprPtr initializer) : Name(name), Initializer(std::move(initializer)) {}
-
-    void exec(Interpreter &interp) const override { interp.execute_let(*this); }
-    virtual std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_let(*this); }
 };
 
-struct BlockStmt : public Stmt {
+struct BlockStmt {
     std::vector<StmtPtr> Statements;
-
-    BlockStmt(std::vector<StmtPtr> statements) : Statements(std::move(statements)) {}
-
-    void exec(Interpreter &interp) const override { interp.execute_block(*this); }
-    virtual std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_block(*this); }
 };
 
-struct IfStmt : public Stmt {
+struct IfStmt {
     ExprPtr Condition;
     StmtPtr then_branch, else_branch;
-
-    IfStmt(ExprPtr condition, StmtPtr then_branch, StmtPtr else_branch)
-        : Condition(std::move(condition)), then_branch(std::move(then_branch)), else_branch(std::move(else_branch)) {}
-
-    void exec(Interpreter &interp) const override { interp.execute_if(*this); }
-    virtual std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_if(*this); }
 };
 
-struct WhileStmt : public Stmt {
+struct WhileStmt {
     ExprPtr Condition;
     StmtPtr Body;
-
-    WhileStmt(ExprPtr condition, StmtPtr body) : Condition(std::move(condition)), Body(std::move(body)) {}
-
-    void exec(Interpreter &interp) const override { interp.execute_while(*this); }
-    virtual std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_while(*this); }
 };
 
-struct FunctionStmt : public Stmt {
+struct FunctionStmt {
     Token Name;
     std::vector<Token> Params;
     StmtPtr Body;
+};
 
-    FunctionStmt(Token name, std::vector<Token> params, StmtPtr body)
-        : Name(name), Params(std::move(params)), Body(std::move(body)) {}
-
-    void exec(Interpreter &interp) const override { interp.execute_function(*this); }
-    virtual std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_function(*this); }
+struct ReturnStmt {
+    ExprPtr Val;
 };

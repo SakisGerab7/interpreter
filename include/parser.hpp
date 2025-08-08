@@ -6,14 +6,14 @@
 #include "stmt.hpp"
 
 struct Parser {
-    std::vector<Token> tokens;
-    size_t current = 0;
-
-    Parser(const std::vector<Token> &tokens) : tokens(tokens) {}
+    const std::vector<Token> &Tokens;
+    size_t Curr = 0;
+    
+    Parser(const std::vector<Token> &tokens) : Tokens(tokens) {}
 
     std::vector<StmtPtr> parse();
 
-private:
+    private:
     StmtPtr declaration();
     StmtPtr var_declaration();
     StmtPtr func_declaration();
@@ -23,20 +23,29 @@ private:
     StmtPtr if_statement();
     StmtPtr while_statement();
     StmtPtr for_statement();
+    StmtPtr return_statement();
     StmtPtr expr_statement();
 
     ExprPtr expression();
     ExprPtr assignment();
+    ExprPtr ternary();
     ExprPtr logic_or();
     ExprPtr logic_and();
+    ExprPtr bit_or();
+    ExprPtr bit_xor();
+    ExprPtr bit_and();
     ExprPtr equality();
     ExprPtr comparison();
+    ExprPtr bit_shift();
     ExprPtr term();
     ExprPtr factor();
     ExprPtr unary();
     ExprPtr call();
     ExprPtr primary();
     ExprPtr array_literal();
+    ExprPtr object_literal();
+
+    void synchronize();
 
     template <typename... Args>
     bool match(Args... args);

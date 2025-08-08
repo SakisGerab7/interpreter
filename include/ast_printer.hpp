@@ -1,33 +1,14 @@
 #pragma once
 
 #include "common.hpp"
-
-class Expr;
-class BinaryExpr;
-class LogicalExpr;
-class UnaryExpr;
-class GroupingExpr;
-class LiteralExpr;
-class VariableExpr;
-class AssignExpr;
-class CallExpr;
-class ArrayExpr;
-class IndexExpr;
-
-class Stmt;
-class ExprStmt;
-class DispStmt;
-class LetStmt;
-class FunctionStmt;
-class BlockStmt;
-class IfStmt;
-class WhileStmt;
+#include "expr.hpp"
+#include "stmt.hpp"
 
 struct AstPrinter {
     struct IndentGuard {
-        size_t &level;
-        IndentGuard(size_t &level) : level(level) { ++level; }
-        ~IndentGuard() { --level; }
+        size_t &Level;
+        IndentGuard(size_t &level) : Level(level) { Level++; }
+        ~IndentGuard() { Level--; }
     };
 
     size_t indent_level = 0;
@@ -46,7 +27,9 @@ struct AstPrinter {
     std::string print_assignment(const AssignExpr &expr);
     std::string print_call(const CallExpr &expr);
     std::string print_array(const ArrayExpr &expr);
+    std::string print_object(const ObjectExpr &expr);
     std::string print_index(const IndexExpr&expr);
+    std::string print_ternary(const TernaryExpr &expr);
 
     std::string print_expr(const ExprStmt &stmt);
     std::string print_disp(const DispStmt &stmt);
@@ -55,10 +38,11 @@ struct AstPrinter {
     std::string print_block(const BlockStmt &stmt);
     std::string print_if(const IfStmt &stmt);
     std::string print_while(const WhileStmt &stmt);
+    std::string print_return(const ReturnStmt &stmt);
 
 private:
     template<typename... Args>
-    std::string parenthesize(const std::string& name, const Args... args);
+    std::string parenthesize(const std::string &name, const Args... args);
     
-    std::string parenthesize(const std::string& name, const std::vector<const Expr *> &exprs);
+    std::string parenthesize(const std::string &name, const std::vector<const Expr *> &exprs);
 };

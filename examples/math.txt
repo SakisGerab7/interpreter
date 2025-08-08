@@ -3,6 +3,14 @@ fn sleep(n) {
     while clock() < t + n {}
 }
 
+fn even_or_odd(n) {
+    if n % 2 == 0 {
+        return "even";
+    }
+
+    return "odd";
+}
+
 disp "Math & Logic Demo";
 
 let count = 5;
@@ -30,6 +38,8 @@ let h = pow(2, 3); // 2^3 = 8
 disp "2^3 = ";
 disp h;
 
+disp "h is " + even_or_odd(int(h));
+
 disp "Generating 5 random numbers between 10 and 20:";
 for let i = 0; i < 5; i += 1 {
     disp randint(10, 20);
@@ -42,8 +52,7 @@ while result != 6 {
     result = randint(1, 6);
     rolls = rolls + 1;
     disp result;
-    let wait = clock();
-    while clock() < wait + 0.5 {}
+    sleep(1);
 }
 
 disp "It took ";
@@ -55,12 +64,7 @@ let values = [0, 1, "", "hello", false, true];
 
 for let i = 0; i < len(values); i += 1 {
     let v = values[i];
-    if v {
-        disp "Truthy:";
-    } else {
-        disp "Falsy:";
-    }
-    disp v;
+    disp (v ? "Truthy" : "Falsy") + ": " + v;
 }
 
 disp "Done.";

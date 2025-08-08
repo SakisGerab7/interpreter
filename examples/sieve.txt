@@ -1,0 +1,37 @@
+fn sieve(n) {
+    let is_prime = [];
+
+    // Initialize all entries as true
+    for let i = 0; i < n + 1; i += 1 {
+        is_prime[i] = true;
+    }
+
+    is_prime[0] = false;
+    is_prime[1] = false;
+
+    for let p = 2; int(pow(p, 2)) <= n; p += 1 {
+        if is_prime[p] {
+            for let j = int(pow(p, 2)); j <= n; j = j + p {
+                is_prime[j] = false;
+            }
+        }
+    }
+
+    // Store result in an object
+    let result = {
+        limit: n,
+        count: 0,
+        primes: []
+    };
+
+    for let k = 2; k <= n; k += 1 {
+        if is_prime[k] {
+            result["primes"][result["count"]] = k;
+            result["count"] += 1;
+        }
+    }
+
+    return result;
+}
+
+disp "sieve result = " + sieve(30);

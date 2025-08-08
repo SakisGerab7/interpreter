@@ -1,117 +1,93 @@
 #pragma once
 
 #include "common.hpp"
-#include "ast_printer.hpp"
-#include "interpreter.hpp"
 #include "value.hpp"
 #include "token.hpp"
 
-struct Expr {
-    virtual ~Expr() = default;
-    virtual Value eval(Interpreter &interp) const = 0;
-    virtual std::string print(AstPrinter &ast_printer) const = 0;
-};
+struct BinaryExpr;
+struct LogicalExpr;
+struct UnaryExpr;
+struct GroupingExpr;
+struct LiteralExpr;
+struct VariableExpr;
+struct AssignExpr;
+struct CallExpr;
+struct ArrayExpr;
+struct ObjectExpr;
+struct IndexExpr;
+struct TernaryExpr;
+
+using Expr = std::variant<
+    BinaryExpr,
+    LogicalExpr,
+    UnaryExpr,
+    GroupingExpr,
+    LiteralExpr,
+    VariableExpr,
+    AssignExpr,
+    CallExpr,
+    ArrayExpr,
+    ObjectExpr,
+    IndexExpr,
+    TernaryExpr
+>;
 
 using ExprPtr = std::unique_ptr<Expr>;
 
-struct BinaryExpr : public Expr {
+template<typename T, typename... Args>
+ExprPtr make_expr(Args&&... args) {
+    return std::make_unique<Expr>(T{std::forward<Args>(args)...});
+}
+
+struct BinaryExpr {
     ExprPtr Left, Right;
     Token Op;
-
-    BinaryExpr(ExprPtr left, Token op, ExprPtr right)
-        : Left(std::move(left)), Op(op), Right(std::move(right)) {}
-
-    Value eval(Interpreter &interp) const override { return interp.eval_binary(*this); }
-    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_binary(*this); }
 };
 
-struct LogicalExpr : public Expr {
+struct LogicalExpr {
     ExprPtr Left, Right;
     Token Op;
-
-    LogicalExpr(ExprPtr left, Token op, ExprPtr right)
-        : Left(std::move(left)), Op(op), Right(std::move(right)) {}
-
-    Value eval(Interpreter &interp) const override { return interp.eval_logical(*this); }
-    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_logical(*this); }
 };
 
-struct UnaryExpr : public Expr {
+struct UnaryExpr {
     ExprPtr Right;
     Token Op;
-
-    UnaryExpr(Token op, ExprPtr right)
-        : Op(op), Right(std::move(right)) {}
-
-    Value eval(Interpreter &interp) const override { return interp.eval_unary(*this); }
-    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_unary(*this); }
 };
 
-struct GroupingExpr : public Expr {
+struct GroupingExpr {
     ExprPtr Grouped;
-
-    GroupingExpr(ExprPtr grouped)
-        : Grouped(std::move(grouped)) {}
-
-    Value eval(Interpreter &interp) const override { return Grouped->eval(interp); }
-    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_grouping(*this); }
 };
 
-struct LiteralExpr : public Expr {
+struct LiteralExpr {
     Value Lit;
-
-    LiteralExpr(Value lit) : Lit(lit) {}
-
-    Value eval(Interpreter &interp) const override { return Lit; }
-    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_literal(*this); }
 };
 
-struct VariableExpr : public Expr {
+struct VariableExpr {
     Token Name;
-
-    VariableExpr(Token name) : Name(name) {}
-
-    Value eval(Interpreter &interp) const override { return interp.eval_variable(*this); }
-    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_variable(*this); }
 };
 
-struct AssignExpr : public Expr {
-    Token Name;
-    ExprPtr Val;
+struct AssignExpr {
+    ExprPtr Target, Val;
     Token Op;
-
-    AssignExpr(Token name, ExprPtr value, Token op)
-        : Name(name), Val(std::move(value)), Op(op) {}
-
-    Value eval(Interpreter &interp) const override { return interp.eval_assignment(*this); }
-    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_assignment(*this); }
 };
 
-struct CallExpr : public Expr {
+struct CallExpr {
     ExprPtr Callee;
     std::vector<ExprPtr> Args;
-
-    CallExpr(ExprPtr callee, std::vector<ExprPtr> args)
-        : Callee(std::move(callee)), Args(std::move(args)) {}
-
-    Value eval(Interpreter &interp) const override { return interp.eval_call(*this); }
-    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_call(*this); }
 };
 
-struct ArrayExpr : public Expr {
+struct ArrayExpr {
     std::vector<ExprPtr> Elements;
-
-    ArrayExpr(std::vector<ExprPtr> elements) : Elements(std::move(elements)) {}
-
-    Value eval(Interpreter &interp) const override { return interp.eval_array(*this); }
-    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_array(*this); }
 };
 
-struct IndexExpr : public Expr {
+struct ObjectExpr {
+    std::unordered_map<std::string, ExprPtr> Items;
+};
+
+struct IndexExpr {
     ExprPtr Target, Index;
+};
 
-    IndexExpr(ExprPtr target, ExprPtr index) : Target(std::move(target)), Index(std::move(index)) {}
-
-    Value eval(Interpreter &interp) const override { return interp.eval_index(*this); }
-    std::string print(AstPrinter &ast_printer) const override { return ast_printer.print_index(*this); }
+struct TernaryExpr {
+    ExprPtr Condition, Left, Right;
 };

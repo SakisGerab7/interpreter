@@ -20,7 +20,7 @@
 * [x] C-style `for` loop
 * [ ] `for-in` loop
 * [ ] `break` / `continue` support
-* [ ] `return` statement
+* [x] `return` statement
 * [ ] Null coalescing (`a ?? b`)
 
 ---
@@ -31,8 +31,8 @@
 * [x] Logical operations (`&&`, `||`, `!`)
 * [x] Equality and comparison (`==`, `!=`, `<`, `>`, `<=`, `>=`)
 * [x] String concatenation (`+`)
-* [ ] Ternary expression (`cond ? then : else`)
-* [ ] Bitwise (`&`, `|`, `^`, `~`, `<<`, `>>`)
+* [x] Ternary expression (`cond ? then : else`)
+* [x] Bitwise (`&`, `|`, `^`, `~`, `<<`, `>>`)
 * [x] Compound assignment (`+=`, `-=`, `*=`, etc.)
 * [ ] Exponentiation (`**`)
 * [ ] Type casting (`as`)
@@ -44,7 +44,7 @@
 
 * [x] `int`, `float`, `bool`, `string`, `null`
 * [x] Arrays/lists
-* [ ] Dictionaries/maps
+* [x] Dictionaries/maps
 * [x] Type introspection (`type(x)`)
 
 ### ➕ Vector & Matrix Support
@@ -68,7 +68,7 @@
 
 ## 🧭 Functions
 
-* [ ] Function declarations (`function name(args) { ... }`)
+* [x] Function declarations (`function name(args) { ... }`)
 * [ ] Function expressions (anonymous functions, closures)
 * [ ] Recursion
 * [ ] First-class functions (pass as values)
