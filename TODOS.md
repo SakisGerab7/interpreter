@@ -79,8 +79,8 @@
 ## 🧪 Standard Library / Built-ins
 
 * [x] `disp(...)`
-* [ ] `clock()`, `len()`, `input()`, etc.
-* [ ] Math utilities (`sqrt`, `abs`, `sin`, etc.)
+* [x] `clock()`, `len()`, `input()`, etc.
+* [x] Math utilities (`sqrt`, `abs`, `sin`, etc.)
 * [ ] String utilities (`split`, `replace`, etc.)
 * [ ] Vector/matrix helpers (`dot`, `cross`, `transpose`, etc.)
 * [ ] Complex helpers (`conjugate`, `magnitude`, etc.)
@@ -146,8 +146,7 @@
 
 ## 🧱 Advanced Features (Optional)
 
-* [ ] Structs or custom types
-* [ ] Classes and inheritance
+* [x] Structs or custom types
 * [ ] Modules and imports
 * [ ] Pattern matching
 * [ ] Error handling (`try` / `catch`) — traditional

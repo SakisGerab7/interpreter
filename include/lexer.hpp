@@ -5,29 +5,31 @@
 
 struct Lexer {
     std::string_view Src;
-    std::vector<Token> &Tokens;
     size_t Start = 0, Curr = 0, Line = 1;
 
-    Lexer(std::string_view src, std::vector<Token> &tokens) : Src(src), Tokens(tokens) {}
+    Lexer(std::string_view src) : Src(src) {}
 
-    void tokenize();
+    Token next_token();
 
 private:
-    void next_token();
-
     void skip_multiline_comment();
 
-    void next_identifier();
-    void next_number();
-    void next_string();
+    Token next_identifier();
+    Token next_number();
+    Token next_string();
 
     bool match(char c);
 
-    void add_token(TokenType type);
-    void add_token(TokenType type, std::string_view value);
+    Token token_from(TokenType type);
+    Token token_from(TokenType type, std::string_view value);
 
     char peek();
     char peek_next();
     char advance();
     bool at_end();
+};
+
+struct LexerError : public std::runtime_error {
+    LexerError(size_t line, const std::string &msg)
+        : std::runtime_error("[Lexer error] Line " + std::to_string(line) + ": " + msg) {}
 };

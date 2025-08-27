@@ -2,14 +2,15 @@
 
 #include "common.hpp"
 #include "environment.hpp"
-#include "expr.hpp"
-#include "stmt.hpp"
+#include "ast.hpp"
 
 class Value;
 
 struct Interpreter {
     std::shared_ptr<Environment> Globals = std::make_unique<Environment>();
     std::shared_ptr<Environment> Curr = Globals;
+
+    std::unordered_map<std::string_view, Value> ArrayMethods;
 
     Interpreter();
 
@@ -25,14 +26,14 @@ struct Interpreter {
     void execute_if(const IfStmt &stmt);
     void execute_while(const WhileStmt &stmt);
     void execute_return(const ReturnStmt &stmt);
-    
-    void execute_block(const BlockStmt &statements, std::shared_ptr<Environment> new_env);
+    void execute_struct(const StructStmt &stmt);
 
     Value evaluate(const Expr &expr);
 
     Value eval_binary(const BinaryExpr &expr);
     Value eval_logical(const LogicalExpr &expr);
     Value eval_unary(const UnaryExpr &expr);
+    Value eval_postfix(const PostfixExpr &expr);
     Value eval_grouping(const GroupingExpr &expr);
     Value eval_literal(const LiteralExpr &expr);
     Value eval_variable(const VariableExpr &expr);
@@ -41,7 +42,28 @@ struct Interpreter {
     Value eval_array(const ArrayExpr &expr);
     Value eval_object(const ObjectExpr &expr);
     Value eval_index(const IndexExpr &expr);
+    Value eval_dot(const DotExpr &expr);
     Value eval_ternary(const TernaryExpr &expr);
+    Value eval_lambda(const LambdaExpr &expr);
+    Value eval_self(const SelfExpr &expr);
 
-    void assign_index(const Expr *target_expr, const Value &index, const Value &val);
+    void assign_to_target(const Expr *target_expr, const Value &val);
+    void assign_index(Value &container, const Value &index, const Value &val);
+
+    Value call_function(std::shared_ptr<Callable> callable, const std::vector<Value> &args);
+
+    std::shared_ptr<Callable> bind_instance(std::shared_ptr<StructInstance> inst, std::shared_ptr<Callable> method);
+
+    struct EnterEnvironmentGuard {
+        Interpreter &Interp;
+        std::shared_ptr<Environment> Prev;
+
+        EnterEnvironmentGuard(Interpreter &interp, std::shared_ptr<Environment> new_env)
+            : Interp(interp), Prev(interp.Curr) { Interp.Curr = std::move(new_env); }
+
+        ~EnterEnvironmentGuard() { Interp.Curr = Prev; }
+
+        EnterEnvironmentGuard(const EnterEnvironmentGuard &) = delete;
+        EnterEnvironmentGuard &operator=(const EnterEnvironmentGuard &) = delete;
+    };
 };

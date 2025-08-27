@@ -30,7 +30,10 @@ std::vector<StmtPtr> Parser::parse() {
     while (!at_end()) {
         try {
             statements.push_back(declaration());
-        } catch (...) {
+        } catch (const LexerError &e) {
+            std::cerr << e.what() << "\n";
+        } catch (const ParseError &e) {
+            std::cerr << e.what() << "\n";
             synchronize();
         }
     }
@@ -41,11 +44,12 @@ std::vector<StmtPtr> Parser::parse() {
 StmtPtr Parser::declaration() {
     if (match(TokenType::Let)) return var_declaration();
     if (match(TokenType::Function)) return func_declaration();
+    if (match(TokenType::Struct)) return struct_declaration();
     return statement();
 }
 
 StmtPtr Parser::var_declaration() {
-    Token name = consume(TokenType::Identifier, "Expect variable name.");
+    auto name = consume(TokenType::Identifier, "Expect variable name.");
 
     ExprPtr initializer = nullptr;
     if (match(TokenType::Assign)) {
@@ -57,17 +61,14 @@ StmtPtr Parser::var_declaration() {
 }
 
 StmtPtr Parser::func_declaration() {
-    Token name = consume(TokenType::Identifier, "Expect function name.");
-    
+    auto name = consume(TokenType::Identifier, "Expect function name.");
     consume(TokenType::LeftParen, "Expect '(' after function name.");
 
     std::vector<Token> params;
-
     if (!check(TokenType::RightParen)) {
         do {
             if (params.size() >= 255) {
-                std::cerr << "[Parse Error] Line " << peek().Line << " at '" << peek().Value
-                    << "': Can't have more than 255 parameters.\n";
+                throw ParseError(peek(), "Can't have more than 255 parameters.");
             }
 
             params.push_back(consume(TokenType::Identifier, "Expect parameter name."));
@@ -77,9 +78,23 @@ StmtPtr Parser::func_declaration() {
     consume(TokenType::RightParen, "Expect ')' after parameters.");
     consume(TokenType::LeftCurly, "Expect '{' before function body.");
 
-    StmtPtr body = block();
+    auto body = block_statements();
 
     return make_stmt<FunctionStmt>(name, std::move(params), std::move(body));
+}
+
+StmtPtr Parser::struct_declaration() {
+    auto name = consume(TokenType::Identifier, "Expect struct name.");
+    consume(TokenType::LeftCurly, "Expect '{' before struct body.");
+
+    std::vector<StmtPtr> methods;
+    while (!check(TokenType::RightCurly) && !at_end()) {
+        consume(TokenType::Function, "Expect 'fn' keyword before method declaration.");
+        methods.push_back(func_declaration());
+    }
+
+    consume(TokenType::RightCurly, "Expect '}' after struct body.");
+    return make_stmt<StructStmt>(name, std::move(methods));
 }
 
 StmtPtr Parser::statement() {
@@ -99,14 +114,7 @@ StmtPtr Parser::disp_statement() {
 }
 
 StmtPtr Parser::block() {
-    std::vector<StmtPtr> statements;
-
-    while (!check(TokenType::RightCurly) && !at_end()) {
-        statements.push_back(declaration());
-    }
-
-    consume(TokenType::RightCurly, "Expect '}' after block.");
-    return make_stmt<BlockStmt>(std::move(statements));
+    return make_stmt<BlockStmt>(std::move(block_statements()));
 }
 
 StmtPtr Parser::if_statement() {
@@ -174,6 +182,17 @@ StmtPtr Parser::expr_statement() {
     return make_stmt<ExprStmt>(std::move(expr));
 }
 
+std::vector<StmtPtr> Parser::block_statements() {
+    std::vector<StmtPtr> statements;
+
+    while (!check(TokenType::RightCurly) && !at_end()) {
+        statements.push_back(declaration());
+    }
+
+    consume(TokenType::RightCurly, "Expect '}' after block.");
+    return statements;
+}
+
 ExprPtr Parser::expression() {
     return assignment();
 }
@@ -187,12 +206,14 @@ ExprPtr Parser::assignment() {
         Token op = previous();
         ExprPtr val = assignment();
         
-        if (std::holds_alternative<VariableExpr>(*expr) || std::holds_alternative<IndexExpr>(*expr)) {
+        if (std::holds_alternative<VariableExpr>(*expr) ||
+            std::holds_alternative<IndexExpr>(*expr) ||
+            std::holds_alternative<DotExpr>(*expr))
+        {
             return make_expr<AssignExpr>(std::move(expr), std::move(val), op);
         }
 
-        std::cerr << "[Parse Error] Line " << peek().Line << " at '" << peek().Value 
-                  << "': Invalid assignment target.\n";
+        throw ParseError(peek(), "Invalid assignment target.");
     }
 
     return expr;
@@ -241,7 +262,7 @@ ExprPtr Parser::bit_or() {
     while (match(TokenType::BitOr)) {
         Token op = previous();
         ExprPtr right = equality();
-        expr = make_expr<LogicalExpr>(std::move(expr), std::move(right), op);
+        expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
     }
 
     return expr;
@@ -253,7 +274,7 @@ ExprPtr Parser::bit_xor() {
     while (match(TokenType::BitXor)) {
         Token op = previous();
         ExprPtr right = equality();
-        expr = make_expr<LogicalExpr>(std::move(expr), std::move(right), op);
+        expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
     }
 
     return expr;
@@ -265,7 +286,7 @@ ExprPtr Parser::bit_and() {
     while (match(TokenType::BitAnd)) {
         Token op = previous();
         ExprPtr right = equality();
-        expr = make_expr<LogicalExpr>(std::move(expr), std::move(right), op);
+        expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
     }
 
     return expr;
@@ -332,7 +353,7 @@ ExprPtr Parser::factor() {
 }
 
 ExprPtr Parser::unary() {
-    if (match(TokenType::Not, TokenType::Minus, TokenType::BitNot)) {
+    if (match(TokenType::Not, TokenType::Minus, TokenType::BitNot, TokenType::Increment, TokenType::Decrement)) {
         Token op = previous();
         ExprPtr right = unary();
         return make_expr<UnaryExpr>(std::move(right), op);
@@ -345,13 +366,15 @@ ExprPtr Parser::call() {
     ExprPtr expr = primary();
 
     while (true) {
-        if (match(TokenType::LeftParen)) {
+        if (match(TokenType::Increment, TokenType::Decrement)) {
+            Token op = previous();
+            expr = make_expr<PostfixExpr>(std::move(expr), op);
+        } else if (match(TokenType::LeftParen)) {
             std::vector<ExprPtr> args;
             if (!check(TokenType::RightParen)) {
                 do {
                     if (args.size() >= 255) {
-                        std::cerr << "[Parse Error] Line " << peek().Line << " at '" << peek().Value
-                                  << "': Can't have more than 255 arguments.\n";
+                        throw ParseError(peek(), "Can't have more than 255 arguments.");
                     }
     
                     args.push_back(expression());
@@ -361,9 +384,12 @@ ExprPtr Parser::call() {
             consume(TokenType::RightParen, "Expect ')' after arguments.");
             expr = make_expr<CallExpr>(std::move(expr), std::move(args));
         } else if (match(TokenType::LeftBracket)) {
-            ExprPtr index = expression();
+            auto index = expression();
             consume(TokenType::RightBracket, "Expect ']' after index.");
             expr = make_expr<IndexExpr>(std::move(expr), std::move(index));
+        } else if (match(TokenType::Dot)) {
+            Token key = consume(TokenType::Identifier, "Expect property name after '.'.");
+            expr = make_expr<DotExpr>(std::move(expr), key);
         } else {
             break;
         }
@@ -376,6 +402,8 @@ ExprPtr Parser::primary() {
     if (match(TokenType::LeftBracket)) return array_literal();
     if (match(TokenType::LeftCurly)) return object_literal();
 
+    if (match(TokenType::Function)) return lambda_expression();
+
     if (match(TokenType::Null))  return make_expr<LiteralExpr>(Value());
     if (match(TokenType::True))  return make_expr<LiteralExpr>(true);
     if (match(TokenType::False)) return make_expr<LiteralExpr>(false);
@@ -385,15 +413,15 @@ ExprPtr Parser::primary() {
     if (match(TokenType::String))  return make_expr<LiteralExpr>(std::string(previous().Value));
 
     if (match(TokenType::Identifier)) return make_expr<VariableExpr>(previous());
+    if (match(TokenType::Self)) return make_expr<SelfExpr>(previous());
 
     if (match(TokenType::LeftParen)) {
-        ExprPtr expr = expression();
+        auto expr = expression();
         consume(TokenType::RightParen, "Expect ')' after expression");
         return make_expr<GroupingExpr>(std::move(expr));
     }
 
-    std::cerr << "[Parse Error] Line " << peek().Line << " at '" << peek().Value << "': Expect expresion\n";
-    return nullptr;
+    throw ParseError(peek(), "Expect expression.");
 }
 
 ExprPtr Parser::array_literal() {
@@ -418,21 +446,51 @@ ExprPtr Parser::object_literal() {
             if (match(TokenType::String, TokenType::Identifier)) {
                 key = std::string(previous().Value);
             } else {
-                std::cerr << "[Parse Error] Line " << peek().Line 
-                          << " at '" << peek().Value 
-                          << "': Expect string or identifier as object key.\n";
-                return nullptr;
+                throw ParseError(peek(), "Expect string or identifier as object key.");
             }
 
             consume(TokenType::Colon, "Expect ':' after key in object literal.");
 
-            ExprPtr value = expression();
+            auto value = expression();
             items[key] = std::move(value);
         } while (match(TokenType::Comma));
     }
 
     consume(TokenType::RightCurly, "Expect '}' after object items.");
     return make_expr<ObjectExpr>(std::move(items));
+}
+
+ExprPtr Parser::lambda_expression() {    
+    consume(TokenType::LeftParen, "Expect '(' after 'fn' keyword.");
+    
+    std::vector<Token> params;
+
+    if (!check(TokenType::RightParen)) {
+        do {
+            if (params.size() >= 255) {
+                throw ParseError(peek(), "Can't have more than 255 parameters.");
+            }
+
+            params.push_back(consume(TokenType::Identifier, "Expect parameter name."));
+        } while (match(TokenType::Comma));
+    }
+
+    consume(TokenType::RightParen, "Expect ')' after parameters.");
+    
+    if (match(TokenType::Arrow)) {
+        auto return_expr = expression();
+        
+        std::vector<StmtPtr> body;
+        body.push_back(make_stmt<ReturnStmt>(std::move(return_expr)));
+
+        return make_expr<LambdaExpr>(std::move(params), std::move(body));
+    }
+
+    consume(TokenType::LeftCurly, "Expect '{' before function body.");
+
+    auto body = block_statements();
+
+    return make_expr<LambdaExpr>(std::move(params), std::move(body));
 }
 
 void Parser::synchronize() {
@@ -455,43 +513,48 @@ void Parser::synchronize() {
     }
 }
 
-template <typename... Args>
-bool Parser::match(Args... args) {
-    std::initializer_list<TokenType> types{args...};
-
-    for (const TokenType &type : types) {
-        if (check(type)) {
-            advance();
-            return true;
-        }
+bool Parser::match(TokenType type) {
+    if (check(type)) {
+        advance();
+        return true;
     }
 
     return false;
 }
 
+
+template <typename... Args>
+bool Parser::match(Args... args) {
+    return ((match(args)) || ...);
+}
+
 Token Parser::consume(TokenType type, const std::string &msg) {
     if (check(type)) return advance();
-    std::cerr << "[Parse Error] Line " << peek().Line << " at '" << peek().Value << "': " << msg << "\n";
+    throw ParseError(peek(), msg);
 }
 
 bool Parser::check(TokenType type) {
     if (at_end()) return false;
-    return peek().Type == type;
+    return Curr.Type == type;
 }
 
 Token Parser::advance() {
-    if (!at_end()) Curr++;
-    return previous();
+    if (!at_end()) {
+        Prev = Curr;
+        Curr = lexer.next_token();
+    }
+
+    return Prev;
 }
 
 bool Parser::at_end() {
-    return peek().Type == TokenType::Eof;
+    return Curr.Type == TokenType::Eof;
 }
 
 Token Parser::peek() {
-    return Tokens[Curr];
+    return Curr;
 }
 
 Token Parser::previous() {
-    return Tokens[Curr - 1];
+    return Prev;
 }

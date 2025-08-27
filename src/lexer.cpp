@@ -1,71 +1,73 @@
 #include "lexer.hpp"
 
-void Lexer::tokenize() {
+Token Lexer::next_token() {
     while (!at_end()) {
         Start = Curr;
-        next_token();
-    }
+        char c = advance();
 
-    Tokens.emplace_back(TokenType::Eof, "<EOF>", Line);
-}
-
-void Lexer::next_token() {
-    char c = advance();
-
-    switch (c) {
-        case '(': add_token(TokenType::LeftParen);    break;
-        case ')': add_token(TokenType::RightParen);   break;
-        case '[': add_token(TokenType::LeftBracket);  break;
-        case ']': add_token(TokenType::RightBracket); break;
-        case '{': add_token(TokenType::LeftCurly);    break;
-        case '}': add_token(TokenType::RightCurly);   break;
-        
-        case ',': add_token(TokenType::Comma);        break;
-        case '.': add_token(TokenType::Dot);          break;
-        case ';': add_token(TokenType::Semicolon);    break;
-        case '?': add_token(TokenType::Questionmark); break;
-        case ':': add_token(TokenType::Colon);        break;
-
-        case '~': add_token(TokenType::BitNot);       break;
-        case '^': add_token(TokenType::BitXor);       break;
-        
-        case '+': add_token(match('=') ? TokenType::PlusEqual    : TokenType::Plus);    break;
-        case '-': add_token(match('=') ? TokenType::MinusEqual   : TokenType::Minus);   break;
-        case '*': add_token(match('=') ? TokenType::MultEqual    : TokenType::Mult);    break; 
-        case '%': add_token(match('=') ? TokenType::ModEqual     : TokenType::Mod);     break;
-        case '!': add_token(match('=') ? TokenType::NotEqual     : TokenType::Not);     break;
-        case '>': add_token(match('=') ? TokenType::GreaterEqual : TokenType::Greater); break;
-        case '<': add_token(match('=') ? TokenType::LessEqual    : TokenType::Less);    break;
-        case '=': add_token(match('=') ? TokenType::Equal        : TokenType::Assign);  break;
-        
-        case '&': add_token(match('&') ? TokenType::And : TokenType::BitAnd); break;
-        case '|': add_token(match('|') ? TokenType::Or  : TokenType::BitOr);  break;
-
-        case '/': {
-            if (match('/')) {
-                while (peek() != '\n' && !at_end()) advance();
-            } else if (match('*')) {
-                skip_multiline_comment();
-            } else {
-                add_token(match('=') ? TokenType::DivEqual : TokenType::Div);
-            }
-        } break;
+        switch (c) {
+            case '(': return token_from(TokenType::LeftParen);    break;
+            case ')': return token_from(TokenType::RightParen);   break;
+            case '[': return token_from(TokenType::LeftBracket);  break;
+            case ']': return token_from(TokenType::RightBracket); break;
+            case '{': return token_from(TokenType::LeftCurly);    break;
+            case '}': return token_from(TokenType::RightCurly);   break;
             
-        case '"': next_string(); break;
+            case ',': return token_from(TokenType::Comma);        break;
+            case '.': return token_from(TokenType::Dot);          break;
+            case ';': return token_from(TokenType::Semicolon);    break;
+            case '?': return token_from(TokenType::Questionmark); break;
+            case ':': return token_from(TokenType::Colon);        break;
 
-        case ' ': case '\r': case '\t': break;
-        case '\n': Line++; break;
-        
-        default: {
-            if (isdigit(c)) {
-                next_number();
-            } else if (isalpha(c) || c == '_') {
-                next_identifier();
-            } else {
-                std::cerr << "Line " << Line << ": Unexpected character '" << c << "'\n";
-            }
-        } break;
+            case '~': return token_from(TokenType::BitNot);       break;
+            case '^': return token_from(TokenType::BitXor);       break;
+            
+            case '+': return token_from(match('=') ? TokenType::PlusEqual :
+                                        match('+') ? TokenType::Increment :
+                                        TokenType::Plus); break;
+            case '-': return token_from(match('=') ? TokenType::MinusEqual :
+                                        match('-') ? TokenType::Decrement :
+                                        match('>') ? TokenType::Arrow :
+                                        TokenType::Minus); break;
+
+            case '*': return token_from(match('=') ? TokenType::MultEqual    : TokenType::Mult);    break; 
+            case '%': return token_from(match('=') ? TokenType::ModEqual     : TokenType::Mod);     break;
+            case '!': return token_from(match('=') ? TokenType::NotEqual     : TokenType::Not);     break;
+            case '>': return token_from(match('=') ? TokenType::GreaterEqual : TokenType::Greater); break;
+            case '<': return token_from(match('=') ? TokenType::LessEqual    : TokenType::Less);    break;
+            case '=': return token_from(match('=') ? TokenType::Equal        : TokenType::Assign);  break;
+            
+            case '&': return token_from(match('&') ? TokenType::And : TokenType::BitAnd); break;
+            case '|': return token_from(match('|') ? TokenType::Or  : TokenType::BitOr);  break;
+
+            case '/': {
+                if (match('/')) {
+                    while (peek() != '\n' && !at_end()) advance();
+                } else if (match('*')) {
+                    skip_multiline_comment();
+                } else {
+                    return token_from(match('=') ? TokenType::DivEqual : TokenType::Div);
+                }
+            } break;
+                
+            case '"': return next_string(); break;
+
+            case ' ': case '\r': case '\t': break;
+            case '\n': Line++; break;
+            
+            default: {
+                if (isdigit(c)) {
+                    return next_number();
+                } else if (isalpha(c) || c == '_') {
+                    return next_identifier();
+                } else {
+                    throw LexerError(Line, std::string("Unexpected character '") + c + "'");
+                }
+            } break;
+        }
     }
+
+    return token_from(TokenType::Eof, "<EOF>");
 }
 
 void Lexer::skip_multiline_comment() {
@@ -75,15 +77,14 @@ void Lexer::skip_multiline_comment() {
     }
 
     if (at_end()) {
-        std::cerr << "Line " << Line << ": Unterminated multiline comment\n";
-        return;
+        throw LexerError(Line, "Unterminated multiline comment");
     }
 
     advance();
     advance();
 }
 
-void Lexer::next_identifier() {
+Token Lexer::next_identifier() {
     while (isalnum(peek()) || peek() == '_') advance();
 
     static std::unordered_map<std::string_view, TokenType> keywords = {
@@ -106,37 +107,36 @@ void Lexer::next_identifier() {
     std::string_view value = Src.substr(Start, Curr - Start);
     
     try {
-        add_token(keywords.at(value));
+        return token_from(keywords.at(value));
     } catch (std::out_of_range) {
-        add_token(TokenType::Identifier);
+        return token_from(TokenType::Identifier);
     }
 }
 
-void Lexer::next_number() {
+Token Lexer::next_number() {
     while (isdigit(peek())) advance();
 
     if (peek() == '.' && isdigit(peek_next())) {
         advance();
         while (isdigit(peek())) advance();
-        add_token(TokenType::Float);
+        return token_from(TokenType::Float);
     } else {
-        add_token(TokenType::Integer);
+        return token_from(TokenType::Integer);
     }
 }
 
-void Lexer::next_string() {
+Token Lexer::next_string() {
     while (peek() != '"' && !at_end()) {
         if (peek() == '\n') Line++;
         advance();
     }
 
     if (at_end()) {
-        std::cerr << "Line " << Line << ": Unterminated string\n";
-        return;
+        throw LexerError(Line, "Unterminated string literal");
     }
 
     advance();
-    add_token(TokenType::String, Src.substr(Start + 1, Curr - Start - 2));
+    return token_from(TokenType::String, Src.substr(Start + 1, Curr - Start - 2));
 }
 
 bool Lexer::match(char c) {
@@ -145,12 +145,12 @@ bool Lexer::match(char c) {
     return true;
 }
 
-void Lexer::add_token(TokenType type) {
-    add_token(type, Src.substr(Start, Curr - Start));
+Token Lexer::token_from(TokenType type) {
+    return token_from(type, Src.substr(Start, Curr - Start));
 }
 
-void Lexer::add_token(TokenType type, std::string_view value) {
-    Tokens.emplace_back(type, value, Line);
+Token Lexer::token_from(TokenType type, std::string_view value) {
+    return Token(type, value, Line);
 }
 
 char Lexer::peek() {

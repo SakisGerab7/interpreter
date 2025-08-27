@@ -6,5 +6,5 @@
 struct ReturnException : public std::runtime_error {
     Value Val;
 
-    ReturnException(Value val) : Val(val), std::runtime_error("return " + val.to_string()) {}
+    ReturnException(Value value) : Val(value), std::runtime_error("return " + value.to_string()) {}
 };

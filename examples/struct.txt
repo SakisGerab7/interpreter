@@ -1,0 +1,88 @@
+struct Student {
+    fn init(name, age, grades, is_student) {
+        // initialize fields
+        self.name = name;
+        self.age = age;
+        self.grades = grades; // array of numbers
+        self.is_student = is_student;
+    }
+
+    fn add_grade(g) {
+        // append grade
+        self.grades[len(self.grades)] = g;
+    }
+
+    fn avg_grade() {
+        if len(self.grades) == 0 {
+            return 0;
+        }
+
+        let sum = self.grades.reduce(fn(acc, n) -> acc + n, 0);
+        return sum / len(self.grades);
+    }
+
+    fn is_passing() {
+        return self.avg_grade() >= 50;
+    }
+
+    fn print_instance() {
+        disp "Student instance:";
+        disp "  name: " + self.name;
+        disp "  age: " + self.age;
+        disp "  grades: " + self.grades;
+        disp "  avg: " + round(self.avg_grade());
+        disp "  student?: " + (self.is_student ? "yes" : "no");
+    }
+
+    fn greet() {
+        disp "Hello, I'm " + self.name + " (" + self.age + " y/o) " +
+            (self.is_student ? "[student]" : "[not student]") +
+            " — avg grade: " + round(self.avg_grade());
+    }
+}
+
+disp Student;
+
+/* Create some Student instances using constructor + init */
+let alice = Student("Alice", 20, [78, 82, 91], true);
+let bob   = Student("Bob",   22, [45, 55],     true);
+let carol = Student("Carol", 30, [],           false); // not a student
+
+/* Use methods and field access */
+alice.print_instance();
+bob.print_instance();
+carol.print_instance();
+
+/* mutate state: add a grade */
+bob.add_grade(67);
+disp "Bob's grades after adding 67: " + bob.grades;
+disp "Bob is passing? " + (bob.is_passing() ? "yes" : "no");
+
+/* Array utilities with lambdas */
+let students = [alice, bob, carol];
+
+disp "Total students in array: " + len(students);
+
+alice.greet();
+bob.greet();
+carol.greet();
+
+/* Map: get ages */
+let ages = students.map(fn(s) -> s.age);
+disp "Ages: " + ages;
+
+/* Filter: students only */
+let enrolled = students.filter(fn(s) -> s.is_student);
+
+disp "Enrolled students:";
+enrolled.foreach(fn(student, i) {
+    disp " " + i + ") " + student.name;
+});
+
+/* Reduce: average age of enrolled */
+let avg_age_enrolled = 0;
+if len(enrolled) > 0 {
+    avg_age_enrolled = enrolled.reduce(fn(acc, s) -> acc + s.age, 0) / len(enrolled);
+}
+
+disp "Average age (enrolled): " + avg_age_enrolled;

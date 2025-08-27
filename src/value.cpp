@@ -1,4 +1,74 @@
 #include "value.hpp"
+#include "callable.hpp"
+
+std::string Array::to_string() const {
+    std::stringstream ss;
+    ss << "[";
+    for (size_t i = 0; i < Elements.size(); ++i) {
+        ss << Elements[i].to_string();
+        if (i < Elements.size() - 1) ss << ", ";
+    }
+
+    ss << "]";
+    return ss.str();
+}
+
+std::string Object::to_string() const {
+    std::stringstream ss;
+    ss << "{";
+    size_t count = 0;
+    for (const auto &[key, value] : Items) {
+        ss << "\"" << key << "\": " << value.to_string();
+        if (count < Items.size() - 1) ss << ", ";
+        count++;
+    }
+    
+    ss << "}";
+    return ss.str();
+}
+
+void Value::set_index(int index, const Value &val) {
+    if (!is_array()) throw std::runtime_error("Value is not an array");
+    if (index < 0) throw std::runtime_error("Negative index assignment not supported");
+    Array &arr = *std::get<ArrayPtr>(data);
+    arr[static_cast<size_t>(index)] = val;
+}
+
+void Value::set_index(const std::string &key, const Value &val) {
+    if (is_object()) {
+        Object &obj = *std::get<ObjectPtr>(data);
+        obj[key] = val;
+    } else if (is_struct_instance()) {
+        std::get<StructInstancePtr>(data)->put(key, val);
+    } else {
+        throw std::runtime_error("Value is neither an object nor a struct instance");
+    }
+}
+
+std::string Value::to_string() const {
+    if (is_int())      return std::to_string(as_int());
+    if (is_float())    return std::to_string(as_float());
+    if (is_bool())     return as_bool() ? "true" : "false";
+    if (is_string())   return as_string();
+    if (is_callable()) return as_callable()->to_string();
+    if (is_array())    return as_array()->to_string();
+    if (is_object())   return as_object()->to_string();
+    if (is_struct())   return as_struct()->to_string();
+    if (is_struct_instance()) return as_struct_instance()->to_string();
+
+    return "null";
+}
+
+bool Value::is_truthy() const {
+    if (is_null())     return false;
+    if (is_int())      return as_int() != 0;
+    if (is_float())    return as_float() != 0;
+    if (is_bool())     return as_bool();
+    if (is_string())   return !as_string().empty();
+    if (is_callable()) return true;
+    if (is_array())    return !as_array()->empty();
+    return false;
+}
 
 Value operator+(const Value &lhs, const Value &rhs) {
     if (lhs.is_int() && rhs.is_int())
@@ -80,9 +150,9 @@ bool operator==(const Value &lhs, const Value &rhs) {
     if (lhs.is_array() && rhs.is_array()) {
         const auto &a1 = lhs.as_array();
         const auto &a2 = rhs.as_array();
-        if (a1.size() != a2.size()) return false;
-        for (size_t i = 0; i < a1.size(); ++i) {
-            if (!(a1[i] == a2[i])) return false;
+        if (a1->size() != a2->size()) return false;
+        for (size_t i = 0; i < a1->size(); ++i) {
+            if (!((*a1)[i] == (*a2)[i])) return false;
         }
 
         return true;
@@ -159,3 +229,4 @@ Value operator>>(const Value &lhs, const Value &rhs) {
         return lhs.as_int() >> rhs.as_int();
     throw std::runtime_error("Unsupported types for '>>'");
 }
+

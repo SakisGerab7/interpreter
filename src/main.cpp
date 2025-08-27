@@ -105,15 +105,11 @@ bool run(const std::string &src) {
     using std::chrono::duration_cast;
     using std::chrono::microseconds;
 
-    std::vector<Token> tokens;
-    tokens.reserve(512);
-
-    Lexer lexer(src, tokens);
-    lexer.tokenize();
+    Lexer lexer(src);
 
     memtrack::next_phase();
 
-    Parser parser(tokens);
+    Parser parser(lexer);
 
     auto t0 = high_resolution_clock::now();
     std::vector<std::unique_ptr<Stmt>> statements = parser.parse();
@@ -125,6 +121,9 @@ bool run(const std::string &src) {
 
     memtrack::next_phase();
 
+    std::cout << "--------------------------------------------\n";
+    std::cout << "Parsed " << statements.size() << " statements:\n";
+    
     AstPrinter printer;
     for (const auto &s : statements) {
         std::cout << printer.print(*s) << "\n";

@@ -16,6 +16,7 @@ enum class TokenType {
     Semicolon,     // ;
     Questionmark,  // ?
     Colon,         // :
+    Arrow,         // ->
     
     Plus,          // +
     Minus,         // -
@@ -46,6 +47,9 @@ enum class TokenType {
     GreaterEqual,  // >=
     LessEqual,     // <=
 
+    Increment,     // ++
+    Decrement,     // --
+
     // Literal tokens
     Identifier,
     String,
@@ -75,6 +79,8 @@ struct Token {
     std::string_view Value;
     size_t Line;
     TokenType Type;
+
+    Token() = default;
 
     Token(TokenType type, std::string_view value, size_t line)
         : Type(type), Value(value), Line(line) {}

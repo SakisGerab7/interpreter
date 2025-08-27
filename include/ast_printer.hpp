@@ -1,8 +1,7 @@
 #pragma once
 
 #include "common.hpp"
-#include "expr.hpp"
-#include "stmt.hpp"
+#include "ast.hpp"
 
 struct AstPrinter {
     struct IndentGuard {
@@ -11,7 +10,7 @@ struct AstPrinter {
         ~IndentGuard() { Level--; }
     };
 
-    size_t indent_level = 0;
+    size_t IndentLevel = 0;
 
     std::string indent() const;
 
@@ -21,6 +20,7 @@ struct AstPrinter {
     std::string print_binary(const BinaryExpr &expr);
     std::string print_logical(const LogicalExpr &expr);
     std::string print_unary(const UnaryExpr &expr);
+    std::string print_postfix(const PostfixExpr &expr);
     std::string print_grouping(const GroupingExpr &expr);
     std::string print_literal(const LiteralExpr &expr);
     std::string print_variable(const VariableExpr &expr);
@@ -29,7 +29,10 @@ struct AstPrinter {
     std::string print_array(const ArrayExpr &expr);
     std::string print_object(const ObjectExpr &expr);
     std::string print_index(const IndexExpr&expr);
+    std::string print_dot(const DotExpr &expr);
     std::string print_ternary(const TernaryExpr &expr);
+    std::string print_lambda(const LambdaExpr &expr);
+    std::string print_self(const SelfExpr &expr);
 
     std::string print_expr(const ExprStmt &stmt);
     std::string print_disp(const DispStmt &stmt);
@@ -39,6 +42,7 @@ struct AstPrinter {
     std::string print_if(const IfStmt &stmt);
     std::string print_while(const WhileStmt &stmt);
     std::string print_return(const ReturnStmt &stmt);
+    std::string print_struct(const StructStmt &stmt);
 
 private:
     template<typename... Args>
