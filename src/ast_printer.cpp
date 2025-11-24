@@ -15,30 +15,31 @@ inline std::string colored(std::string_view text, const char *color) {
     return std::string(color) + std::string(text) + Color::Reset;
 }
 
-//===================== AstPrinter =====================//
-
 std::string AstPrinter::indent() const {
-    return std::string(IndentLevel * 2, ' ');
+    return std::string(indent_level * 2, ' ');
 }
 
 std::string AstPrinter::print(const Expr &expr) {
     return std::visit(Overloaded{
-        [&](const BinaryExpr &e)   { return print_binary(e);     },
-        [&](const LogicalExpr &e)  { return print_logical(e);    },
-        [&](const UnaryExpr &e)    { return print_unary(e);      },
-        [&](const PostfixExpr &e)  { return print_postfix(e);    },
-        [&](const GroupingExpr &e) { return print_grouping(e);   },
-        [&](const LiteralExpr &e)  { return print_literal(e);    },
-        [&](const VariableExpr &e) { return print_variable(e);   },
-        [&](const AssignExpr &e)   { return print_assignment(e); },
-        [&](const CallExpr &e)     { return print_call(e);       },
-        [&](const ArrayExpr &e)    { return print_array(e);      },
-        [&](const ObjectExpr &e)   { return print_object(e);     },
-        [&](const IndexExpr &e)    { return print_index(e);      },
-        [&](const DotExpr &e)      { return print_dot(e);        },
-        [&](const TernaryExpr &e)  { return print_ternary(e);    },
-        [&](const LambdaExpr &e)   { return print_lambda(e);     },
-        [&](const SelfExpr &e)     { return print_self(e);       },
+        [&](const BinaryExpr &e)   { return print_binary(e);    },
+        [&](const LogicalExpr &e)  { return print_logical(e);   },
+        [&](const UnaryExpr &e)    { return print_unary(e);     },
+        [&](const PostfixExpr &e)  { return print_postfix(e);   },
+        [&](const GroupingExpr &e) { return print_grouping(e);  },
+        [&](const LiteralExpr &e)  { return print_literal(e);   },
+        [&](const VariableExpr &e) { return print_variable(e);  },
+        [&](const AssignExpr &e)   { return print_assign(e);    },
+        [&](const SetDotExpr &e)   { return print_set_dot(e);   },
+        [&](const SetIndexExpr &e) { return print_set_index(e); },
+        [&](const CallExpr &e)     { return print_call(e);      },
+        [&](const ArrayExpr &e)    { return print_array(e);     },
+        [&](const ObjectExpr &e)   { return print_object(e);    },
+        [&](const IndexExpr &e)    { return print_index(e);     },
+        [&](const DotExpr &e)      { return print_dot(e);       },
+        [&](const TernaryExpr &e)  { return print_ternary(e);   },
+        [&](const LambdaExpr &e)   { return print_lambda(e);    },
+        [&](const SelfExpr &e)     { return print_self(e);      },
+        [&](const SpawnExpr &e)    { return print_spawn(e);     },
     }, expr);
 }
 
@@ -56,46 +57,52 @@ std::string AstPrinter::print(const Stmt &stmt) {
     }, stmt);
 }
 
-//===================== Expressions =====================//
-
 std::string AstPrinter::print_binary(const BinaryExpr &expr) {
-    return parenthesize(colored(expr.Op.Value, Color::Op), expr.Left.get(), expr.Right.get());
+    return parenthesize(colored(expr.op.value, Color::Op), expr.left.get(), expr.right.get());
 }
 
 std::string AstPrinter::print_logical(const LogicalExpr &expr) {
-    return parenthesize(colored(expr.Op.Value, Color::Op), expr.Left.get(), expr.Right.get());
+    return parenthesize(colored(expr.op.value, Color::Op), expr.left.get(), expr.right.get());
 }
 
 std::string AstPrinter::print_unary(const UnaryExpr &expr) {
-    return parenthesize(colored(expr.Op.Value, Color::Op), expr.Right.get());
+    return parenthesize(colored(expr.op.value, Color::Op), expr.right.get());
 }
 
 std::string AstPrinter::print_postfix(const PostfixExpr &expr) {
-    return parenthesize(colored("postfix ", Color::Keyword) + colored(expr.Op.Value, Color::Op), expr.Left.get());
+    return parenthesize(colored("postfix ", Color::Keyword) + colored(expr.op.value, Color::Op), expr.left.get());
 }
 
 std::string AstPrinter::print_grouping(const GroupingExpr &expr) {
-    return parenthesize(colored("group", Color::Keyword), expr.Grouped.get());
+    return parenthesize(colored("group", Color::Keyword), expr.grouped.get());
 }
 
 std::string AstPrinter::print_literal(const LiteralExpr &expr) {
-    return colored(expr.Literal.to_string(), expr.Literal.is_string() ? Color::String : Color::Number);
+    return colored(expr.literal.to_string(), expr.literal.is_string() ? Color::String : Color::Number);
 }
 
 std::string AstPrinter::print_variable(const VariableExpr &expr) {
-    return colored(expr.Name.Value, Color::Ident);
+    return colored(expr.name.value, Color::Ident);
 }
 
-std::string AstPrinter::print_assignment(const AssignExpr &expr) {
-    return parenthesize(colored(expr.Op.Value, Color::Op), expr.Target.get(), expr.Value.get());
+std::string AstPrinter::print_assign(const AssignExpr &expr) {
+    return parenthesize(colored(expr.op.value, Color::Op) + " " + colored(expr.name.value, Color::Ident), expr.value.get());
+}
+
+std::string AstPrinter::print_set_dot(const SetDotExpr &expr) {
+    return parenthesize(colored(expr.op.value, Color::Op) + " " + colored(expr.key.value, Color::String), expr.target.get(), expr.value.get());
+}
+
+std::string AstPrinter::print_set_index(const SetIndexExpr &expr) {
+    return parenthesize(colored(expr.op.value, Color::Op), expr.index.get(), expr.target.get(), expr.value.get());
 }
 
 std::string AstPrinter::print_call(const CallExpr &expr) {
     std::vector<const Expr*> args;
-    args.reserve(expr.Args.size() + 1);
+    args.reserve(expr.args.size() + 1);
 
-    args.push_back(expr.Callee.get());
-    for (const auto &arg : expr.Args) {
+    args.push_back(expr.callee.get());
+    for (const auto &arg : expr.args) {
         args.push_back(arg.get());
     }
 
@@ -104,9 +111,9 @@ std::string AstPrinter::print_call(const CallExpr &expr) {
 
 std::string AstPrinter::print_array(const ArrayExpr &expr) {
     std::vector<const Expr*> elements;
-    elements.reserve(expr.Elements.size());
+    elements.reserve(expr.elements.size());
 
-    for (const auto &element : expr.Elements) {
+    for (const auto &element : expr.elements) {
         elements.push_back(element.get());
     }
 
@@ -116,9 +123,9 @@ std::string AstPrinter::print_array(const ArrayExpr &expr) {
 std::string AstPrinter::print_object(const ObjectExpr &expr) {
     std::stringstream keys;
     std::vector<const Expr*> values;
-    values.reserve(expr.Items.size());
+    values.reserve(expr.items.size());
 
-    for (const auto &[key, value] : expr.Items) {
+    for (const auto &[key, value] : expr.items) {
         keys << " " << key;
         values.push_back(value.get());
     }
@@ -127,34 +134,55 @@ std::string AstPrinter::print_object(const ObjectExpr &expr) {
 }
 
 std::string AstPrinter::print_index(const IndexExpr &expr) {
-    return parenthesize(colored("[]", Color::Op), expr.Target.get(), expr.Index.get());
+    return parenthesize(colored("[]", Color::Op), expr.target.get(), expr.index.get());
 }
 
 std::string AstPrinter::print_dot(const DotExpr &expr) {
-    return parenthesize(colored(". ", Color::Op) + colored(expr.Key.Value, Color::Ident), expr.Target.get());
+    return parenthesize(colored(". ", Color::Op) + colored(expr.key.value, Color::Ident), expr.target.get());
 }
 
 std::string AstPrinter::print_ternary(const TernaryExpr &expr) {
-    return parenthesize(colored("?:", Color::Op), expr.Condition.get(), expr.Left.get(), expr.Right.get());
+    return parenthesize(colored("?:", Color::Op), expr.condition.get(), expr.left.get(), expr.right.get());
 }
 
 std::string AstPrinter::print_lambda(const LambdaExpr &expr) {
     std::stringstream out;
     out << "(" << colored("fn", Color::Keyword) << " (";
 
-    for (size_t i = 0; i < expr.Params.size(); i++) {
-        out << colored(expr.Params[i].Value, Color::Ident);
-        if (i < expr.Params.size() - 1) {
+    for (size_t i = 0; i < expr.params.size(); i++) {
+        out << colored(expr.params[i].value, Color::Ident);
+        if (i < expr.params.size() - 1) {
             out << " ";
         }
     }
 
     out << ")";
 
-    if (!expr.Body.empty()) {
-        IndentGuard guard(IndentLevel);
+    if (!expr.body->empty()) {
+        IndentGuard guard(indent_level);
 
-        for (const auto &s : expr.Body) {
+        for (const auto &s : *expr.body) {
+            out << "\n" << print(*s);
+        }
+    }
+
+    out << ")";
+
+    return out.str();
+}
+
+std::string AstPrinter::print_self(const SelfExpr &expr) {
+    return colored(expr.keyword.value, Color::Keyword);
+}
+
+std::string AstPrinter::print_spawn(const SpawnExpr &expr) {
+    std::stringstream out;
+    out << "(" << colored("spawn", Color::Keyword) << " " << (expr.count ? print(*expr.count) : "");
+
+    if (!expr.statements->empty()) {
+        IndentGuard guard(indent_level);
+
+        for (const auto &s : *expr.statements) {
             out << "\n" << print(*s);
         }
     }
@@ -162,45 +190,41 @@ std::string AstPrinter::print_lambda(const LambdaExpr &expr) {
     return out.str();
 }
 
-std::string AstPrinter::print_self(const SelfExpr &expr) {
-    return colored(expr.Keyword.Value, Color::Keyword);
-}
-
-//===================== Statements =====================//
-
 std::string AstPrinter::print_expr(const ExprStmt &stmt) {
-    return indent() + parenthesize(colored("expr", Color::Keyword), stmt.Expr.get());
+    return indent() + parenthesize(colored("expr", Color::Keyword), stmt.expr.get());
 }
 
 std::string AstPrinter::print_disp(const DispStmt &stmt) {
-    return indent() + parenthesize(colored("disp", Color::Keyword), stmt.Expr.get());
+    return indent() + parenthesize(colored("disp", Color::Keyword), stmt.expr.get());
 }
 
 std::string AstPrinter::print_let(const LetStmt &stmt) {
-    return indent() + parenthesize(colored("let ", Color::Keyword) + colored(stmt.Name.Value, Color::Ident), stmt.Initializer.get());
+    return indent() + parenthesize(colored("let ", Color::Keyword) + colored(stmt.name.value, Color::Ident), stmt.initializer.get());
 }
 
 std::string AstPrinter::print_function(const FunctionStmt &stmt) {
     std::stringstream out;
 
-    out << indent() << "(" << colored("fn ", Color::Keyword) << colored(stmt.Name.Value, Color::Ident) << "(";
+    out << indent() << "(" << colored("fn ", Color::Keyword) << colored(stmt.name.value, Color::Ident) << "(";
 
-    for (size_t i = 0; i < stmt.Params.size(); i++) {
-        out << colored(stmt.Params[i].Value, Color::Ident);
-        if (i < stmt.Params.size() - 1) {
+    for (size_t i = 0; i < stmt.params.size(); i++) {
+        out << colored(stmt.params[i].value, Color::Ident);
+        if (i < stmt.params.size() - 1) {
             out << " ";
         }
     }
 
     out << ")";
 
-    if (!stmt.Body.empty()) {
-        IndentGuard guard(IndentLevel);
+    if (!stmt.body->empty()) {
+        IndentGuard guard(indent_level);
 
-        for (const auto &s : stmt.Body) {
+        for (const auto &s : *stmt.body) {
             out << "\n" << print(*s);
         }
     }
+
+    out << ")";
 
     return out.str();
 }
@@ -209,10 +233,10 @@ std::string AstPrinter::print_block(const BlockStmt &stmt) {
     std::stringstream out;
     out << indent() << "(" << colored("block", Color::Keyword);
 
-    if (!stmt.Statements.empty()) {
-        IndentGuard guard(IndentLevel);
+    if (!stmt.statements->empty()) {
+        IndentGuard guard(indent_level);
 
-        for (const auto &s : stmt.Statements) {
+        for (const auto &s : *stmt.statements) {
             out << "\n" << print(*s);
         }
     }
@@ -223,14 +247,14 @@ std::string AstPrinter::print_block(const BlockStmt &stmt) {
 
 std::string AstPrinter::print_if(const IfStmt &stmt) {
     std::stringstream out;
-    out << indent() << "(" << colored("if", Color::Keyword) << " " << print(*stmt.Condition) << "\n";
+    out << indent() << "(" << colored("if", Color::Keyword) << " " << print(*stmt.condition) << "\n";
 
     {
-        IndentGuard guard(IndentLevel);
-        out << print(*stmt.ThenBranch);
-        if (stmt.ElseBranch) {
+        IndentGuard guard(indent_level);
+        out << print(*stmt.then_branch);
+        if (stmt.else_branch) {
             out << "\n" << indent() << colored("else", Color::Keyword) << "\n";
-            out << print(*stmt.ElseBranch) << ")";
+            out << print(*stmt.else_branch) << ")";
         } else {
             out << ")";
         }
@@ -241,36 +265,34 @@ std::string AstPrinter::print_if(const IfStmt &stmt) {
 
 std::string AstPrinter::print_while(const WhileStmt &stmt) {
     std::stringstream out;
-    out << indent() << "(" << colored("while", Color::Keyword) << " " << print(*stmt.Condition) << "\n";
+    out << indent() << "(" << colored("while", Color::Keyword) << " " << print(*stmt.condition) << "\n";
 
     {
-        IndentGuard guard(IndentLevel);
-        out << print(*stmt.Body) << ")";
+        IndentGuard guard(indent_level);
+        out << print(*stmt.body) << ")";
     }
 
     return out.str();
 }
 
 std::string AstPrinter::print_return(const ReturnStmt &stmt) {
-    return indent() + parenthesize(colored("return", Color::Keyword), stmt.Value.get());
+    return indent() + parenthesize(colored("return", Color::Keyword), stmt.value.get());
 }
 
 std::string AstPrinter::print_struct(const StructStmt &stmt) {
     std::stringstream out;
     out << indent() << "(" << colored("struct", Color::Keyword);
 
-    if (!stmt.Methods.empty()) {
-        IndentGuard guard(IndentLevel);
+    if (!stmt.methods.empty()) {
+        IndentGuard guard(indent_level);
 
-        for (const auto &s : stmt.Methods) {
+        for (const auto &s : stmt.methods) {
             out << "\n" << print(*s);
         }
     }
 
     return out.str();
 }
-
-//===================== Parenthesize Helpers =====================//
 
 template<typename... Args>
 std::string AstPrinter::parenthesize(const std::string &name, const Args... args) {

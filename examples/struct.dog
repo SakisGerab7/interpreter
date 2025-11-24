@@ -9,7 +9,7 @@ struct Student {
 
     fn add_grade(g) {
         // append grade
-        self.grades[len(self.grades)] = g;
+        self.grades.push(g);
     }
 
     fn avg_grade() {
@@ -17,8 +17,7 @@ struct Student {
             return 0;
         }
 
-        let sum = self.grades.reduce(fn(acc, n) -> acc + n, 0);
-        return sum / len(self.grades);
+        return self.grades.sum() / len(self.grades);
     }
 
     fn is_passing() {
@@ -67,22 +66,38 @@ alice.greet();
 bob.greet();
 carol.greet();
 
-/* Map: get ages */
-let ages = students.map(fn(s) -> s.age);
-disp "Ages: " + ages;
+// those functions dont work for now
+///* Map: get ages */
+//let ages = students.map(fn(s) -> s.age);
+//disp "Ages: " + ages;
+//
+///* Filter: students only */
+//let enrolled = students.filter(fn(s) -> s.is_student);
+//
+//disp "Enrolled students:";
+//enrolled.foreach(fn(student, i) {
+//    disp " " + i + ") " + student.name;
+//});
+//
+///* Reduce: average age of enrolled */
+//let avg_age_enrolled = 0;
+//if len(enrolled) > 0 {
+//    avg_age_enrolled = enrolled.reduce(fn(acc, s) -> acc + s.age, 0) / len(enrolled);
+//}
+//
+//disp "Average age (enrolled): " + avg_age_enrolled;
 
-/* Filter: students only */
-let enrolled = students.filter(fn(s) -> s.is_student);
-
-disp "Enrolled students:";
-enrolled.foreach(fn(student, i) {
-    disp " " + i + ") " + student.name;
-});
-
-/* Reduce: average age of enrolled */
-let avg_age_enrolled = 0;
-if len(enrolled) > 0 {
-    avg_age_enrolled = enrolled.reduce(fn(acc, s) -> acc + s.age, 0) / len(enrolled);
+let ages = [];
+let enroled = [];
+for let i = 0; i < len(students); i++ {
+    ages.push(students[i].age);
+    if (students[i].is_student) {
+        enroled.push(students[i]);
+    }
 }
 
-disp "Average age (enrolled): " + avg_age_enrolled;
+disp "Ages: " + ages;
+
+for let i = 0; i < len(enroled); i++ {
+    disp " " + i + ") " + enroled[i].name;
+}

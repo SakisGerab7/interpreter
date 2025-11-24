@@ -7,11 +7,11 @@
 
 struct Parser {
     Lexer &lexer;
-    Token Curr, Prev;
+    Token curr, prev;
 
-    Parser(Lexer &lexer) : lexer(lexer), Curr(lexer.next_token()), Prev() {}
+    Parser(Lexer &lexer) : lexer(lexer), curr(lexer.next_token()), prev() {}
 
-    std::vector<StmtPtr> parse();
+    std::shared_ptr<std::vector<StmtPtr>> parse();
 
 private:
     StmtPtr declaration();
@@ -27,7 +27,8 @@ private:
     StmtPtr return_statement();
     StmtPtr expr_statement();
 
-    std::vector<StmtPtr> block_statements();
+    std::vector<Token> parameters();
+    std::shared_ptr<std::vector<StmtPtr>> block_statements();
 
     ExprPtr expression();
     ExprPtr assignment();
@@ -56,18 +57,18 @@ private:
     template <typename... Args>
     bool match(Args... args);
 
-    Token consume(TokenType type, const std::string &msg);
+    inline Token consume(TokenType type, const std::string &msg);
 
-    bool check(TokenType type);
+    inline bool check(TokenType type);
 
-    Token advance();
-    bool at_end();
-    Token peek();
-    Token previous();
+    inline Token advance();
+    inline bool at_end();
+    inline Token peek();
+    inline Token previous();
     
 };
 
 struct ParseError : public std::runtime_error {
     ParseError(Token token, const std::string &msg)
-        : std::runtime_error("[Parse Error] Line " + std::to_string(token.Line) + " at " + std::string(token.Value) + ": " + msg) {}
+        : std::runtime_error("[Parse Error] Line " + std::to_string(token.line) + " at " + std::string(token.value) + ": " + msg) {}
 };

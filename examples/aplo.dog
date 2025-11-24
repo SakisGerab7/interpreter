@@ -1,0 +1,128 @@
+disp "[1] Clock = " + clock();
+
+let arr = [1, 2];
+arr[0] = "bruh";
+arr[1] += 5.0;
+disp arr;
+
+fn leftpad(s, l, c) {
+    let res = c * (l - len(s)) + s;
+    
+    (fn() {
+        disp "upv: " + res;
+    })();
+
+    return res;
+}
+
+disp leftpad("42", 5, "0");
+
+disp "[2] Clock = " + clock();
+
+let a = ((2 < 3) && (4 > 5)) ? "correct" : "wrong";
+
+if a == "wrong" {
+    disp "it is wrong";
+} else {
+    disp "it is correct";
+}
+
+// countdown
+for let i = 5; i >= 0; i-- {
+    let s = i == 0 ? "!" : "...";
+    disp i + s;
+}
+
+let i = 0;
+arr[i++] = "nigga";
+disp arr;
+disp i;
+
+let hello = "  hello world  ";
+hello = hello.trim();
+disp hello + "!";
+hello = hello.split(" ");
+for let i = 0; i < len(hello); i++ {
+    disp "(" + i + ") " + hello[i].upper();
+}
+
+{
+    disp a;
+    let a = "dog";
+    let b = "cat";
+    disp 69;
+    disp a;
+    disp b;
+}
+
+disp "[3] Clock = " + clock();
+
+struct Dummy {
+    fn init(a) {
+        self.a = a;
+    }
+
+    fn foo(s) {
+        disp self.a + " " + s;
+    }
+}
+
+let d = Dummy("nigga");
+disp d;
+disp d.a;
+d.foo("ahh");
+
+let m = d.foo;
+m("balls");
+
+struct Nested {
+    fn method() {
+        fn function() {
+            disp self;
+        }
+
+        function();
+    }
+}
+
+Nested().method();
+
+fn a() {
+    fn count(n) {
+        return (n == 0) ? 0 : (count(n - 1) + 1);
+    }
+
+    disp count(2);
+}
+
+a();
+
+/*
+fn main_() {
+    fn fib(n) {
+        fn fib_memo(n, memo) {
+            if n <= 1 {
+                return n;
+            }
+
+            if memo[n] == -1 {
+                memo[n] = fib_memo(n - 1, memo) + fib_memo(n - 2, memo);
+            }
+
+            return memo[n];
+        }
+
+        let memo = [-1] * (n + 1);
+        return fib_memo(n, memo);
+    }
+
+    let t = clock();
+    for let i = 0; i <= 1; i++ {
+        disp "fib(" + i + ") = " + fib(i);
+    }
+    disp clock() - t;
+}
+
+main_();
+
+*/

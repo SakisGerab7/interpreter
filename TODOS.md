@@ -6,7 +6,7 @@
 * [x] Expression evaluation (arithmetic, string, boolean)
 * [x] Assignment expressions (`a = 1`)
 * [x] Scope and shadowing
-* [ ] Global and local variable resolution tracking
+* [x] Global and local variable resolution tracking
 * [ ] Constants / `const` keyword support
 
 ---
@@ -35,7 +35,7 @@
 * [x] Bitwise (`&`, `|`, `^`, `~`, `<<`, `>>`)
 * [x] Compound assignment (`+=`, `-=`, `*=`, etc.)
 * [ ] Exponentiation (`**`)
-* [ ] Type casting (`as`)
+* [x] Type casting (`int()`, `float()`, `str()`)
 * [ ] Type coercion and runtime type errors
 
 ---
@@ -69,10 +69,10 @@
 ## 🧭 Functions
 
 * [x] Function declarations (`function name(args) { ... }`)
-* [ ] Function expressions (anonymous functions, closures)
-* [ ] Recursion
-* [ ] First-class functions (pass as values)
-* [ ] Built-in/native functions
+* [x] Function expressions (anonymous functions, closures)
+* [x] Recursion
+* [x] First-class functions (pass as values)
+* [x] Built-in/native functions
 
 ---
 
@@ -89,12 +89,10 @@
 
 ## ⚙️ Concurrency
 
-* [ ] Coroutine support (`spawn`, `yield`, `await`)
+* [x] Coroutine support (`spawn`, `yield`, `await`)
 * [ ] Channels / message-passing
-* [ ] Atomic variables
 * [ ] Thread-safe standard library primitives
-* [ ] Event loop or scheduler
-* [ ] Mutex / lock support (if needed)
+* [x] Event loop or scheduler
 
 ---
 
@@ -137,7 +135,7 @@
 * [x] Parser
 * [x] AST nodes
 * [x] Interpreter
-* [ ] Resolver / static analyzer (for scope resolution)
+* [x] Resolver / static analyzer (for scope resolution)
 * [ ] REPL
 * [ ] Test framework / unit tests for parser/interpreter
 * [ ] Debugger or trace output

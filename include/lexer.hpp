@@ -4,10 +4,10 @@
 #include "token.hpp"
 
 struct Lexer {
-    std::string_view Src;
-    size_t Start = 0, Curr = 0, Line = 1;
+    std::string_view src;
+    size_t start = 0, curr = 0, line = 1;
 
-    Lexer(std::string_view src) : Src(src) {}
+    Lexer(std::string_view source) : src(source) {}
 
     Token next_token();
 
@@ -20,13 +20,13 @@ private:
 
     bool match(char c);
 
-    Token token_from(TokenType type);
-    Token token_from(TokenType type, std::string_view value);
+    inline Token token_from(TokenType type);
+    inline Token token_from(TokenType type, std::string_view value);
 
-    char peek();
-    char peek_next();
-    char advance();
-    bool at_end();
+    inline char peek();
+    inline char peek_next();
+    inline char advance();
+    inline bool at_end();
 };
 
 struct LexerError : public std::runtime_error {

@@ -2,10 +2,11 @@
 
 Token Lexer::next_token() {
     while (!at_end()) {
-        Start = Curr;
+        start = curr;
         char c = advance();
 
         switch (c) {
+            case '\0': break;
             case '(': return token_from(TokenType::LeftParen);    break;
             case ')': return token_from(TokenType::RightParen);   break;
             case '[': return token_from(TokenType::LeftBracket);  break;
@@ -53,7 +54,7 @@ Token Lexer::next_token() {
             case '"': return next_string(); break;
 
             case ' ': case '\r': case '\t': break;
-            case '\n': Line++; break;
+            case '\n': line++; break;
             
             default: {
                 if (isdigit(c)) {
@@ -61,7 +62,7 @@ Token Lexer::next_token() {
                 } else if (isalpha(c) || c == '_') {
                     return next_identifier();
                 } else {
-                    throw LexerError(Line, std::string("Unexpected character '") + c + "'");
+                    throw LexerError(line, std::string("Unexpected character '") + c + "'");
                 }
             } break;
         }
@@ -72,12 +73,12 @@ Token Lexer::next_token() {
 
 void Lexer::skip_multiline_comment() {
     while (!(peek() == '*' && peek_next() == '/') && !at_end()) {
-        if (peek() == '\n') Line++;
+        if (peek() == '\n') line++;
         advance();
     }
 
     if (at_end()) {
-        throw LexerError(Line, "Unterminated multiline comment");
+        throw LexerError(line, "Unterminated multiline comment");
     }
 
     advance();
@@ -102,15 +103,14 @@ Token Lexer::next_identifier() {
         { "return", TokenType::Return   },
         { "self",   TokenType::Self     },
         { "disp",   TokenType::Disp     },
+        { "spawn",  TokenType::Spawn    },
     };
 
-    std::string_view value = Src.substr(Start, Curr - Start);
-    
-    try {
-        return token_from(keywords.at(value));
-    } catch (std::out_of_range) {
-        return token_from(TokenType::Identifier);
+    if (auto it = keywords.find(src.substr(start, curr - start)); it != keywords.end()) {
+        return token_from(it->second);
     }
+
+    return token_from(TokenType::Identifier);
 }
 
 Token Lexer::next_number() {
@@ -127,44 +127,44 @@ Token Lexer::next_number() {
 
 Token Lexer::next_string() {
     while (peek() != '"' && !at_end()) {
-        if (peek() == '\n') Line++;
+        if (peek() == '\n') line++;
         advance();
     }
 
     if (at_end()) {
-        throw LexerError(Line, "Unterminated string literal");
+        throw LexerError(line, "Unterminated string literal");
     }
 
     advance();
-    return token_from(TokenType::String, Src.substr(Start + 1, Curr - Start - 2));
+    return token_from(TokenType::String, src.substr(start + 1, curr - start - 2));
 }
 
 bool Lexer::match(char c) {
-    if (at_end() || Src.at(Curr) != c) return false;
-    Curr++;
+    if (at_end() || peek() != c) return false;
+    advance();
     return true;
 }
 
 Token Lexer::token_from(TokenType type) {
-    return token_from(type, Src.substr(Start, Curr - Start));
+    return Token(type, src.substr(start, curr - start), line);
 }
 
 Token Lexer::token_from(TokenType type, std::string_view value) {
-    return Token(type, value, Line);
+    return Token(type, value, line);
 }
 
 char Lexer::peek() {
-    return !at_end() ? Src[Curr] : '\0';
+    return !at_end() ? src[curr] : '\0';
 }
 
 char Lexer::peek_next() {
-    return (Curr + 1 < Src.size()) ? Src[Curr + 1] : '\0';
+    return (curr + 1 < src.size()) ? src[curr + 1] : '\0';
 }
 
 char Lexer::advance() {
-    return Src[Curr++];
+    return src[curr++];
 }
 
 bool Lexer::at_end() {
-    return Curr >= Src.size();
+    return curr >= src.size();
 }

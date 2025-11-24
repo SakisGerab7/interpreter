@@ -1,0 +1,30 @@
+fn main_() {
+    let acc = 0;
+
+    let ts = spawn 2 {
+        let tid = thread_id();
+        let n = (tid == 1) ? 5 : 8;
+
+        for let i = 0; i < n; i++ {
+            acc++;
+            disp ((tid == 1) ? "first" : "second") + " thread";
+            disp ((tid == 1) ? "first" : "second") + " thread";
+            sleep(500);
+        }
+
+        return "thread " + tid + " got acc up to " + acc;
+    };
+
+    disp ts;
+
+    for let i = 0; i < len(ts); i++ {
+        disp ts[i].join();
+    }
+
+    disp acc;
+    disp "this is the end";
+}
+
+main_();
+
+return 69;

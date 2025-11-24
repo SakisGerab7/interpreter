@@ -3,7 +3,7 @@ fn sieve(n) {
 
     // Initialize all entries as true
     for let i = 0; i < n + 1; i++ {
-        is_prime[i] = true;
+        is_prime.push(true);
     }
 
     is_prime[0] = false;
@@ -26,11 +26,17 @@ fn sieve(n) {
 
     for let k = 2; k <= n; k++ {
         if is_prime[k] {
-            result.primes[result.count++] = k;
+            result.primes.push(k);
         }
     }
+
+    result.count = len(result.primes);
 
     return result;
 }
 
-disp "sieve result = " + sieve(30);
+let start = clock();
+disp "sieve result = " + sieve(100000);
+let end = clock();
+let t = end - start;
+disp "Execution Time: " + t + "s";

@@ -13,6 +13,8 @@ struct GroupingExpr;
 struct LiteralExpr;
 struct VariableExpr;
 struct AssignExpr;
+struct SetDotExpr;
+struct SetIndexExpr;
 struct CallExpr;
 struct ArrayExpr;
 struct ObjectExpr;
@@ -21,6 +23,7 @@ struct DotExpr;
 struct TernaryExpr;
 struct LambdaExpr;
 struct SelfExpr;
+struct SpawnExpr;
 
 struct ExprStmt;
 struct DispStmt;
@@ -42,6 +45,8 @@ using Expr = std::variant<
     LiteralExpr,
     VariableExpr,
     AssignExpr,
+    SetDotExpr,
+    SetIndexExpr,
     CallExpr,
     ArrayExpr,
     ObjectExpr,
@@ -49,7 +54,8 @@ using Expr = std::variant<
     DotExpr,
     TernaryExpr,
     LambdaExpr,
-    SelfExpr
+    SelfExpr,
+    SpawnExpr
 >;
 
 using ExprPtr = std::unique_ptr<Expr>;
@@ -82,116 +88,136 @@ StmtPtr make_stmt(Args &&...args) {
 
 // ==== Expression structs ====
 struct BinaryExpr {
-    ExprPtr Left, Right;
-    Token Op;
+    ExprPtr left, right;
+    Token op;
 };
 
 struct LogicalExpr {
-    ExprPtr Left, Right;
-    Token Op;
+    ExprPtr left, right;
+    Token op;
 };
 
 struct UnaryExpr {
-    ExprPtr Right;
-    Token Op;
+    ExprPtr right;
+    Token op;
 };
 
 struct PostfixExpr {
-    ExprPtr Left;
-    Token Op;
+    ExprPtr left;
+    Token op;
 };
 
 struct GroupingExpr {
-    ExprPtr Grouped;
+    ExprPtr grouped;
 };
 
 struct LiteralExpr {
-    Value Literal;
+    Value literal;
 };
 
 struct VariableExpr {
-    Token Name;
+    Token name;
 };
 
 struct AssignExpr {
-    ExprPtr Target, Value;
-    Token Op;
+    Token name;      // variable
+    ExprPtr value;   // assigned value
+    Token op;        // =, +=, etc.
+};
+
+struct SetDotExpr {
+    ExprPtr target;
+    Token key;
+    ExprPtr value;
+    Token op;        // =, +=, etc.
+};
+
+struct SetIndexExpr {
+    ExprPtr target;
+    ExprPtr index;
+    ExprPtr value;
+    Token op;        // =, +=, etc.
 };
 
 struct CallExpr {
-    ExprPtr Callee;
-    std::vector<ExprPtr> Args;
+    ExprPtr callee;
+    std::vector<ExprPtr> args;
 };
 
 struct ArrayExpr {
-    std::vector<ExprPtr> Elements;
+    std::vector<ExprPtr> elements;
 };
 
 struct ObjectExpr {
-    std::unordered_map<std::string, ExprPtr> Items;
+    std::unordered_map<std::string, ExprPtr> items;
 };
 
 struct IndexExpr {
-    ExprPtr Target, Index;
+    ExprPtr target, index;
 };
 
 struct DotExpr {
-    ExprPtr Target;
-    Token Key;
+    ExprPtr target;
+    Token key;
 };
 
 struct TernaryExpr {
-    ExprPtr Condition, Left, Right;
+    ExprPtr condition, left, right;
 };
 
 struct LambdaExpr {
-    std::vector<Token> Params;
-    std::vector<StmtPtr> Body;
+    std::vector<Token> params;
+    std::shared_ptr<std::vector<StmtPtr>> body;
 };
 
 struct SelfExpr {
-    Token Keyword;
+    Token keyword;
+};
+
+struct SpawnExpr {
+    ExprPtr count;
+    std::shared_ptr<std::vector<StmtPtr>> statements;
 };
 
 // ==== Statement structs ====
 struct ExprStmt {
-    ExprPtr Expr;
+    ExprPtr expr;
 };
 
 struct DispStmt {
-    ExprPtr Expr;
+    ExprPtr expr;
 };
 
 struct LetStmt {
-    Token Name;
-    ExprPtr Initializer;
+    Token name;
+    ExprPtr initializer;
 };
 
 struct BlockStmt {
-    std::vector<StmtPtr> Statements;
+    std::shared_ptr<std::vector<StmtPtr>> statements;
 };
 
 struct IfStmt {
-    ExprPtr Condition;
-    StmtPtr ThenBranch, ElseBranch;
+    ExprPtr condition;
+    StmtPtr then_branch, else_branch;
 };
 
 struct WhileStmt {
-    ExprPtr Condition;
-    StmtPtr Body;
+    ExprPtr condition;
+    StmtPtr body;
 };
 
 struct FunctionStmt {
-    Token Name;
-    std::vector<Token> Params;
-    std::vector<StmtPtr> Body;
+    Token name;
+    std::vector<Token> params;
+    std::shared_ptr<std::vector<StmtPtr>> body;
 };
 
 struct ReturnStmt {
-    ExprPtr Value;
+    ExprPtr value;
 };
 
 struct StructStmt {
-    Token Name;
-    std::vector<StmtPtr> Methods;
+    Token name;
+    std::vector<StmtPtr> methods;
 };

@@ -5,12 +5,12 @@
 
 struct AstPrinter {
     struct IndentGuard {
-        size_t &Level;
-        IndentGuard(size_t &level) : Level(level) { Level++; }
-        ~IndentGuard() { Level--; }
+        size_t &level;
+        IndentGuard(size_t &level) : level(level) { level++; }
+        ~IndentGuard() { level--; }
     };
 
-    size_t IndentLevel = 0;
+    size_t indent_level = 0;
 
     std::string indent() const;
 
@@ -24,7 +24,9 @@ struct AstPrinter {
     std::string print_grouping(const GroupingExpr &expr);
     std::string print_literal(const LiteralExpr &expr);
     std::string print_variable(const VariableExpr &expr);
-    std::string print_assignment(const AssignExpr &expr);
+    std::string print_assign(const AssignExpr &expr);
+    std::string print_set_dot(const SetDotExpr &expr);
+    std::string print_set_index(const SetIndexExpr &expr);
     std::string print_call(const CallExpr &expr);
     std::string print_array(const ArrayExpr &expr);
     std::string print_object(const ObjectExpr &expr);
@@ -33,6 +35,7 @@ struct AstPrinter {
     std::string print_ternary(const TernaryExpr &expr);
     std::string print_lambda(const LambdaExpr &expr);
     std::string print_self(const SelfExpr &expr);
+    std::string print_spawn(const SpawnExpr &expr);
 
     std::string print_expr(const ExprStmt &stmt);
     std::string print_disp(const DispStmt &stmt);
@@ -43,6 +46,7 @@ struct AstPrinter {
     std::string print_while(const WhileStmt &stmt);
     std::string print_return(const ReturnStmt &stmt);
     std::string print_struct(const StructStmt &stmt);
+
 
 private:
     template<typename... Args>

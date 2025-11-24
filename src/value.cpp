@@ -1,12 +1,20 @@
 #include "value.hpp"
-#include "callable.hpp"
+
+uint16_t Chunk::add_constant(const Value &v) {
+    for (uint16_t i = 0; i < constants.size(); i++) {
+        if (constants[i] == v) return i;
+    }
+
+    constants.push_back(v);
+    return static_cast<uint16_t>(constants.size() - 1);
+}
 
 std::string Array::to_string() const {
     std::stringstream ss;
     ss << "[";
-    for (size_t i = 0; i < Elements.size(); ++i) {
-        ss << Elements[i].to_string();
-        if (i < Elements.size() - 1) ss << ", ";
+    for (size_t i = 0; i < elements.size(); ++i) {
+        ss << elements[i].to_string();
+        if (i < elements.size() - 1) ss << ", ";
     }
 
     ss << "]";
@@ -17,9 +25,9 @@ std::string Object::to_string() const {
     std::stringstream ss;
     ss << "{";
     size_t count = 0;
-    for (const auto &[key, value] : Items) {
+    for (const auto &[key, value] : items) {
         ss << "\"" << key << "\": " << value.to_string();
-        if (count < Items.size() - 1) ss << ", ";
+        if (count < items.size() - 1) ss << ", ";
         count++;
     }
     
@@ -27,22 +35,83 @@ std::string Object::to_string() const {
     return ss.str();
 }
 
-void Value::set_index(int index, const Value &val) {
-    if (!is_array()) throw std::runtime_error("Value is not an array");
-    if (index < 0) throw std::runtime_error("Negative index assignment not supported");
-    Array &arr = *std::get<ArrayPtr>(data);
-    arr[static_cast<size_t>(index)] = val;
+Value Value::get_index(const Value &idx) const {
+    if (is_array() && idx.is_int()) {
+        int i = idx.as_int();
+        if (i < 0) 
+            throw std::runtime_error("Negative index access not supported");
+
+        const Array &arr = *std::any_cast<Array::Ptr>(data);
+
+        if (static_cast<size_t>(i) >= arr.size())
+            throw std::runtime_error("Array index out of bounds");
+
+        return arr[static_cast<size_t>(i)];
+    } else if (idx.is_string()) {
+        std::string k = idx.as_string();
+        if (is_object()) {
+            const Object &obj = *std::any_cast<Object::Ptr>(data);
+            auto it = obj.find(k);
+            if (it == obj.end())
+                throw std::runtime_error("Key '" + k + "' not found in object");
+
+            return it->second;
+        } else if (is_struct_instance()) {
+            auto &instance = *std::any_cast<StructInstance::Ptr>(data);
+            return instance.get(k);
+        } else {
+            throw std::runtime_error("Cannot access with string key: container type=" 
+                                     + type_name() + ", key=" + k);
+        }
+    } 
+    else {
+        throw std::runtime_error("Invalid index access: container type=" 
+                                 + type_name() + ", index type=" + idx.type_name());
+    }
 }
 
-void Value::set_index(const std::string &key, const Value &val) {
-    if (is_object()) {
-        Object &obj = *std::get<ObjectPtr>(data);
-        obj[key] = val;
-    } else if (is_struct_instance()) {
-        std::get<StructInstancePtr>(data)->put(key, val);
+void Value::set_index(const Value &idx, const Value &val) {
+    if (is_array() && idx.is_int()) {
+        int i = idx.as_int();
+        if (i < 0) 
+            throw std::runtime_error("Negative index assignment not supported");
+
+        Array &arr = *std::any_cast<Array::Ptr>(data);
+        arr[static_cast<size_t>(i)] = val;
+    } else if (idx.is_string()) {
+        std::string k = idx.as_string();
+        if (is_object()) {
+            Object &obj = *std::any_cast<Object::Ptr>(data);
+            obj[k] = val;
+        } else if (is_struct_instance()) {
+            auto &instance = *std::any_cast<StructInstance::Ptr>(data);
+            instance.put(k, val);
+        } else {
+            throw std::runtime_error("Cannot assign with string key: container type=" 
+                                     + type_name() + ", key=" + k);
+        }
     } else {
-        throw std::runtime_error("Value is neither an object nor a struct instance");
+        throw std::runtime_error("Invalid index assignment: container type=" 
+                                 + type_name() + ", index type=" + idx.type_name());
     }
+}
+
+std::string Value::type_name() const {
+    if (is_null()) return "null";
+    if (is_bool()) return "bool";
+    if (is_int()) return "int";
+    if (is_float()) return "float";
+    if (is_string()) return "string";
+    if (is_function()) return "function";
+    if (is_native()) return "native function";
+    if (is_closure()) return "closure";
+    if (is_array()) return "array";
+    if (is_object()) return "object";
+    if (is_struct()) return "struct";
+    if (is_struct_instance()) return "struct instance";
+    if (is_thread_handle()) return "thread handle";
+    if (is_upvalue()) return "upvalue";
+    return "unknown";
 }
 
 std::string Value::to_string() const {
@@ -50,12 +119,15 @@ std::string Value::to_string() const {
     if (is_float())    return std::to_string(as_float());
     if (is_bool())     return as_bool() ? "true" : "false";
     if (is_string())   return as_string();
-    if (is_callable()) return as_callable()->to_string();
+    if (is_function()) return as_function()->to_string();
+    if (is_native())   return as_native()->to_string();
+    if (is_closure())  return as_closure()->to_string();
     if (is_array())    return as_array()->to_string();
     if (is_object())   return as_object()->to_string();
     if (is_struct())   return as_struct()->to_string();
     if (is_struct_instance()) return as_struct_instance()->to_string();
-
+    if (is_thread_handle()) return "thread " + std::to_string(as_thread_handle().ID);
+    if (is_upvalue()) return "upvalue";
     return "null";
 }
 
@@ -65,8 +137,15 @@ bool Value::is_truthy() const {
     if (is_float())    return as_float() != 0;
     if (is_bool())     return as_bool();
     if (is_string())   return !as_string().empty();
-    if (is_callable()) return true;
+    if (is_function()) return true;
+    if (is_native())   return true;
+    if (is_closure())  return true;
     if (is_array())    return !as_array()->empty();
+    if (is_object())   return !as_object()->empty();
+    if (is_struct())   return true;
+    if (is_struct_instance()) return true;
+    if (is_thread_handle())   return true;
+    if (is_upvalue())         return true;
     return false;
 }
 
@@ -77,6 +156,15 @@ Value operator+(const Value &lhs, const Value &rhs) {
         return lhs.as_float() + rhs.as_float();
     if (lhs.is_string() || rhs.is_string())
         return lhs.to_string() + rhs.to_string();
+    if (lhs.is_array() && rhs.is_array()) {
+        const auto &arr1 = lhs.as_array();
+        const auto &arr2 = rhs.as_array();
+        std::vector<Value> combined;
+        combined.reserve(arr1->size() + arr2->size());
+        combined.insert(combined.end(), arr1->begin(), arr1->end());
+        combined.insert(combined.end(), arr2->begin(), arr2->end());
+        return std::make_shared<Array>(combined);
+    }
 
     throw std::runtime_error("Unsupported types for '+'");
 }
@@ -95,6 +183,33 @@ Value operator*(const Value &lhs, const Value &rhs) {
         return lhs.as_int() * rhs.as_int();
     if ((lhs.is_int() || lhs.is_float()) && (rhs.is_int() || rhs.is_float()))
         return lhs.as_float() * rhs.as_float();
+    if ((lhs.is_array() && rhs.is_int()) || (lhs.is_int() && rhs.is_array())) { 
+        const Value &arr_val = lhs.is_array() ? lhs : rhs;
+        const Value &int_val = lhs.is_int() ? lhs : rhs;
+        const auto &arr = arr_val.as_array();
+        int times = int_val.as_int();
+        if (times < 0) throw std::runtime_error("Cannot multiply array by negative integer");
+
+        std::vector<Value> result;
+        result.reserve(arr->size() * times);
+        for (int i = 0; i < times; ++i) {
+            result.insert(result.end(), arr->begin(), arr->end());
+        }
+        return std::make_shared<Array>(result);
+    }
+    if ((lhs.is_string() && rhs.is_int()) || (lhs.is_int() && rhs.is_string())) {
+        const Value &str_val = lhs.is_string() ? lhs : rhs;
+        const Value &int_val = lhs.is_int() ? lhs : rhs;
+        const std::string &s = str_val.as_string();
+        int times = int_val.as_int();
+        if (times < 0) throw std::runtime_error("Cannot multiply string by negative integer");
+
+        std::string result;
+        for (int i = 0; i < times; ++i) {
+            result += s;
+        }
+        return result;
+    }
 
     throw std::runtime_error("Unsupported types for '*'");
 }
@@ -144,8 +259,14 @@ bool operator==(const Value &lhs, const Value &rhs) {
     if (lhs.is_string() && rhs.is_string())
         return lhs.as_string() == rhs.as_string();
 
-    if (lhs.is_callable() && rhs.is_callable())
-        return lhs.as_callable() == rhs.as_callable();
+    if (lhs.is_function() && rhs.is_function())
+        return lhs.as_function() == rhs.as_function();
+    
+    if (lhs.is_native() && rhs.is_native())
+        return lhs.as_native() == rhs.as_native();
+
+    if (lhs.is_closure() && rhs.is_closure())
+        return lhs.as_closure() == rhs.as_closure();
 
     if (lhs.is_array() && rhs.is_array()) {
         const auto &a1 = lhs.as_array();
@@ -229,4 +350,3 @@ Value operator>>(const Value &lhs, const Value &rhs) {
         return lhs.as_int() >> rhs.as_int();
     throw std::runtime_error("Unsupported types for '>>'");
 }
-

@@ -71,25 +71,28 @@ enum class TokenType {
     Return,
     Self,
     Disp,
+    Spawn,
+    Yield,
+    Sleep,
 
     Eof
 };
 
 struct Token {
-    std::string_view Value;
-    size_t Line;
-    TokenType Type;
-
+    std::string value;
+    size_t line;
+    TokenType type;
+    
     Token() = default;
 
     Token(TokenType type, std::string_view value, size_t line)
-        : Type(type), Value(value), Line(line) {}
+        : type(type), value(std::string(value)), line(line) {}
 
     friend std::ostream &operator<<(std::ostream &os, const Token &token) {
-        return os << "Token(type: " << (int) token.Type << ", value: " << token.Value << ", line: " << token.Line << ")";
+        return os << "Token(type: " << (int) token.type << ", value: " << token.value << ", line: " << token.line << ")";
     }
 };
 
 inline bool operator==(const Token &lhs, const Token &rhs) {
-    return lhs.Type == rhs.Type && lhs.Value == rhs.Value && lhs.Line == rhs.Line;
+    return lhs.type == rhs.type && lhs.value == rhs.value && lhs.line == rhs.line;
 }
