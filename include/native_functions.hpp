@@ -262,13 +262,10 @@ namespace native_functions {
         size_t thread_id = handle.ID;
 
         auto thread = vm.scheduler.get_thread_by_id(thread_id);
-        if (!thread) {
-            throw std::runtime_error("No such thread with ID " + std::to_string(thread_id));
-        }
 
         // If the thread is already finished, return its return value immediately
-        if (thread->state == GreenThread::Finished) {
-            return thread->return_value;
+        if (!thread || thread->state == GreenThread::Finished) {
+            return vm.scheduler.get_return_value(thread_id);
         }
 
         // Map the current thread to the target thread for joining

@@ -451,7 +451,7 @@ void VM::run() {
                 current_thread->frames.pop_back();
                 if (current_thread->frames.empty()) {
                     current_thread->state = GreenThread::Finished;
-                    current_thread->return_value = ret_val;
+                    scheduler.set_return_value(current_thread, ret_val);
                     return;
                 }
 

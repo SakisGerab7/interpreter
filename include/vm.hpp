@@ -20,7 +20,8 @@ struct GreenThread {
         Running,
         Ready,
         Blocked,
-        Finished
+        Finished,
+        // Joined,
     } state = Ready;
 
     std::chrono::steady_clock::time_point wake_time;
@@ -29,8 +30,6 @@ struct GreenThread {
     size_t stack_size = 0;
     std::vector<CallFrame> frames;
     std::vector<Upvalue::Ptr> open_upvalues;
-
-    Value return_value;
 
     std::vector<GreenThread::Ptr> children;
 
@@ -50,12 +49,18 @@ struct Scheduler {
     > blocked_queue;
 
     std::unordered_map<size_t, size_t> join_map; // parent thread ID -> child thread ID
+    std::unordered_map<size_t, Value> return_values; // thread ID -> return value
 
     GreenThread::Ptr get_thread_by_id(size_t id);
     void add_thread(GreenThread::Ptr thread);
     void enqueue(GreenThread::Ptr thread);
     inline GreenThread::Ptr dequeue();
     inline void block_thread(GreenThread::Ptr &thread);
+
+    Value get_return_value(size_t thread_id);
+    void set_return_value(GreenThread::Ptr &thread, const Value &return_value);
+
+    void notify_waiters(GreenThread::Ptr &thread);
     void kill_thread_and_children(GreenThread::Ptr &thread);
 
     void wake_threads(const std::chrono::steady_clock::time_point &now);

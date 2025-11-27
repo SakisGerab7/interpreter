@@ -1,0 +1,64 @@
+struct Pipe {
+    fn init() {
+        self.items = [];
+        self.closed = false;
+    }
+
+    fn send(item) {
+        self.items.push(item);
+        sleep(0); // yield to other threads
+    }
+
+    fn recv() {
+        // wait if empty, unless closed
+        while len(self.items) == 0 {
+            if self.closed {
+                return null; // indicate no more items
+            }
+
+            sleep(0); // yield to other threads
+        }
+
+        return self.items.shift();
+    }
+
+    fn close() {
+        self.closed = true;
+    }
+}
+
+fn producer(p) {
+    for let i = 0; i < 10; i++ {
+        disp "Producing item " + i;
+        p.send(i);
+        sleep(1000);
+    }
+
+    p.close();
+    return "done producing";
+}
+
+fn consumer(p) {
+    while true {
+        let item = p.recv();
+        if item == null {
+            return "done consuming";
+        }
+
+        disp "Consuming item " + item;
+        sleep(2200);
+    }
+}
+
+let pipe = Pipe();
+
+let prod_thread = spawn {
+    return producer(pipe);
+};
+
+let cons_thread = spawn {
+    return consumer(pipe);
+};
+
+//disp cons_thread.join();
+//disp prod_thread.join();
