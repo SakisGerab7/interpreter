@@ -1,0 +1,75 @@
+fn producer(interval) {
+    let p = pipe(-1);
+
+    spawn {
+        for let i = 0; i < 10; i++ {
+            p <- i;
+            sleep(interval);
+        }
+
+        close p;
+    };
+
+    return p;
+}
+
+fn fan_in(pipes) {
+    let out = pipe(-1);
+
+    for let i = 0; i < len(pipes); i++ {
+        /* We need to create a copy of i for the spawn closure
+         * because otherwise it will capture the variable by reference
+         * and all closures will share the same i value (which will be out of bounds after the loop) */
+        let index = i;
+
+        spawn {
+            while pipes[index] {
+                let v = <-pipes[index];
+                if v != null {
+                    out <- [v, index];
+                }
+            }
+        };
+
+        // Alternative: create a function that takes the index as argument and call it right away
+        /*
+        (fn (index) {
+            spawn {
+                while pipes[index] {
+                    let v = <-pipes[index];
+                    if v != null {
+                        out <- [v, index];
+                    }
+                }
+            };
+        })(i);
+        */
+    }
+
+    spawn {
+        // Wait for all input pipes to close
+        for let i = 0; i < len(pipes); i++ {
+            while pipes[i] {
+                sleep(0);
+            }
+        }
+
+        close out;
+    };
+
+    return out;
+}
+
+let p1 = producer(2000);
+let p2 = producer(500);
+
+let p = fan_in([p1, p2]);
+
+while p {
+    let v = <-p;
+    if v != null {
+        disp "Consumed: " + v[0] + " from pipe " + v[1];
+    }
+}
+
+disp "Done consuming.";

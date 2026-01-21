@@ -1,0 +1,46 @@
+fn worker(p) {
+    // both send and receive on the same pipe
+    for let i = 0; i < 10; i += 2 {
+        p <- ("work " + i);
+        p <- ("work " + (i + 1));
+        sleep(500);
+
+        let ack = <-p;
+        if ack != null {
+            disp "worker got ack: " + ack + " for items " + i + " and " + (i + 1);
+        }
+    }
+
+    close p;
+}
+
+fn controller(p) {
+    while p {
+        let msg1 = <-p;
+        if msg1 == null {
+            disp "controller: pipe closed";
+            p = null;       // disable further receives
+        } else {
+            disp "controller got: " + msg1;
+            let msg2 = <-p;
+            if msg2 == null {
+                disp "controller: pipe closed";
+                p = null;   // disable further receives
+            } else {
+                disp "controller got: " + msg2;
+                p <- ("`ack for " + msg1 + " and " + msg2 + "`");
+            }
+        }
+    }
+}
+
+let p = pipe(0); // Has to be unbuffered
+
+let w_thread = spawn { worker(p); };
+let c_thread = spawn { controller(p); };
+disp "main thread waiting";
+
+w_thread.join();
+c_thread.join();
+
+disp "main thread done";

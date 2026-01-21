@@ -1,0 +1,21 @@
+let acc = 0; // Shared variable
+
+// Function to be executed by each thread
+fn execute_something() {
+    disp "Thread " + thread_id() + " runs code";
+    acc += 10;
+}
+
+// Spawn 3 threads
+let ts = spawn 3 {
+    sleep(1000 * thread_id()); // Staggered start (1s, 2s, 3s)
+    execute_something();
+    return acc; // Return the current value of acc
+};
+
+// Wait for all threads to complete and collect their results
+for let i = 0; i < len(ts); i++ {
+    disp "Thread " + ts[i] + " got acc up to " + ts[i].join();
+}
+
+disp "Final acc = " + acc;

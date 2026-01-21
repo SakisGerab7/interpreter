@@ -4,6 +4,7 @@
 #include "lexer.hpp"
 #include "token.hpp"
 #include "ast.hpp"
+#include "runtime.hpp"
 
 struct Parser {
     Lexer &lexer;
@@ -24,7 +25,10 @@ private:
     StmtPtr if_statement();
     StmtPtr while_statement();
     StmtPtr for_statement();
+    StmtPtr foreach_statement();
     StmtPtr return_statement();
+    StmtPtr close_statement();
+    StmtPtr select_statement();
     StmtPtr expr_statement();
 
     std::vector<Token> parameters();
@@ -32,6 +36,7 @@ private:
 
     ExprPtr expression();
     ExprPtr assignment();
+    ExprPtr send_message();
     ExprPtr ternary();
     ExprPtr logic_or();
     ExprPtr logic_and();

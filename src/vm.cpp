@@ -1,7 +1,6 @@
 #include "vm.hpp"
+#include "bytecode.hpp"
 #include "native_functions.hpp"
-
-std::string opcode_to_string(OpCode op);
 
 VM::VM() {
     // define native functions here if needed
@@ -51,6 +50,9 @@ VM::VM() {
     define_native("thread_id", 0, native_functions::thread_id);
 
     define_native("Thread.join", 0, native_functions::join);
+    // define_native("Thread.detach", 0, native_functions::detach);
+
+    define_native("pipe", 1, native_functions::pipe);
 }
 
 void VM::spawn_thread(Closure::Ptr closure, size_t thread_count) {
@@ -328,11 +330,7 @@ void VM::run() {
                 }
 
                 auto upvalue = curr.closure->upvalues[upvalue_idx];
-                if (upvalue->location != nullptr) {
-                    push(*upvalue->location);
-                } else {
-                    push(upvalue->closed);
-                }
+                push(upvalue->get());
                 break;
             }
             case OP_STORE_UPVALUE: {
@@ -342,11 +340,7 @@ void VM::run() {
                 }
 
                 auto upvalue = curr.closure->upvalues[upvalue_idx];
-                if (upvalue->location != nullptr) {
-                    *(upvalue->location) = peek(0);
-                } else {
-                    upvalue->closed = peek(0);
-                }
+                upvalue->set(peek(0));
                 break;
             }
             case OP_LOAD_FIELD: {
@@ -504,6 +498,130 @@ void VM::run() {
                 binary_op(op);
                 break;
             }
+            case OP_SEND_PIPE: {
+                Value val = pop();
+                Value pipe_val = pop();
+                if (!pipe_val.is_pipe_handle()) {
+                    throw std::runtime_error("Expected a pipe handle for SEND_PIPE");
+                }
+
+                auto pipe_handle = pipe_val.as_pipe_handle();
+
+                auto pipe = scheduler.get_pipe_by_id(pipe_handle.ID);
+                if (!pipe) {
+                    throw std::runtime_error("Invalid pipe ID in SEND_PIPE");
+                }
+
+                scheduler.send_to_pipe(current_thread, pipe, val);
+                push(val);
+                break;
+            }
+            case OP_RECV_PIPE: {
+                Value pipe_val = pop();
+                if (!pipe_val.is_pipe_handle()) {
+                    throw std::runtime_error("Expected a pipe handle for RECV_PIPE");
+                }
+
+                auto pipe_handle = pipe_val.as_pipe_handle();
+
+                auto pipe = scheduler.get_pipe_by_id(pipe_handle.ID);
+                if (!pipe) {
+                    throw std::runtime_error("Invalid pipe ID in RECV_PIPE");
+                }
+
+                Value received = scheduler.receive_from_pipe(current_thread, pipe);
+                push(received);
+                break;
+            }
+            case OP_CLOSE_PIPE: {
+                Value pipe_val = pop();
+                if (!pipe_val.is_pipe_handle()) {
+                    throw std::runtime_error("Expected a pipe handle for CLOSE_PIPE");
+                }
+
+                auto pipe_handle = pipe_val.as_pipe_handle();
+
+                auto pipe = scheduler.get_pipe_by_id(pipe_handle.ID);
+                if (!pipe) {
+                    throw std::runtime_error("Invalid pipe ID in CLOSE_PIPE");
+                }
+
+                scheduler.close_pipe(pipe);
+                break;
+            }
+            case OP_SELECT_BEGIN: {
+                uint8_t case_count = read_byte(curr);
+                scheduler.select_begin(current_thread, case_count);
+                break;
+            }
+            case OP_SELECT_RECV: {
+                uint16_t jump_offset = read_short(curr);
+                uint8_t slot = read_byte(curr);
+
+                Value pipe_val = pop();
+
+                // select case is disabled
+                if (pipe_val.is_null()) {
+                    scheduler.select_add_recv_case(current_thread, nullptr, curr.ip + jump_offset - 1, slot);
+                } else {
+                    if (!pipe_val.is_pipe_handle()) {
+                        throw std::runtime_error("Expected a pipe handle for SELECT_RECV");
+                    }
+
+                    auto pipe_handle = pipe_val.as_pipe_handle();
+
+                    auto pipe = scheduler.get_pipe_by_id(pipe_handle.ID);
+                    if (!pipe) {
+                        throw std::runtime_error("Invalid pipe ID in SELECT_RECV");
+                    }
+
+                    scheduler.select_add_recv_case(current_thread, pipe, curr.ip + jump_offset - 1, slot);
+                }
+
+                if (slot != 0xFF) {
+                    std::cerr << "[Thread " << current_thread->ID << "] SELECT_RECV will store received value in stack slot "
+                              << static_cast<int>(slot) << " (stack size: " << current_thread->stack_size << ")\n";
+
+                    current_thread->stack_size = std::max(current_thread->stack_size, static_cast<size_t>(slot + 1));
+                    current_thread->stack[slot] = {};
+                }
+                break;
+            }
+            case OP_SELECT_SEND: {
+                uint16_t jump_offset = read_short(curr);
+
+                Value val = pop();
+                Value pipe_val = pop();
+
+                // select case is disabled
+                if (pipe_val.is_null()) {
+                    scheduler.select_add_send_case(current_thread, nullptr, curr.ip + jump_offset, val);
+                    break;
+                }
+
+                if (!pipe_val.is_pipe_handle()) {
+                    throw std::runtime_error("Expected a pipe handle for SELECT_SEND");
+                }
+
+                auto pipe_handle = pipe_val.as_pipe_handle();
+
+                auto pipe = scheduler.get_pipe_by_id(pipe_handle.ID);
+                if (!pipe) {
+                    throw std::runtime_error("Invalid pipe ID in SELECT_SEND");
+                }
+
+                scheduler.select_add_send_case(current_thread, pipe, curr.ip + jump_offset, val);
+                break;
+            }
+            case OP_SELECT_DEFAULT: {
+                uint16_t jump_offset = read_short(curr);
+                scheduler.select_add_default_case(current_thread, curr.ip + jump_offset);
+                break;
+            }
+            case OP_SELECT_EXEC: {
+                scheduler.select_execute(current_thread, curr.ip);
+                break;
+            }
             case OP_NOT:
             case OP_NEG:
             case OP_BIT_NOT: {
@@ -646,61 +764,5 @@ inline void VM::binary_op(OpCode op) {
         case OP_BIT_XOR:     push(a ^ b);  break;
         case OP_SHIFT_LEFT:  push(a << b); break;
         case OP_SHIFT_RIGHT: push(a >> b); break;
-    }
-}
-
-std::string opcode_to_string(OpCode op) {
-    switch (op) {
-        case OP_DEFINE_GLOBAL: return "DEFINE_GLOBAL";
-        case OP_NULL: return "NULL";
-        case OP_TRUE: return "TRUE";
-        case OP_FALSE: return "FALSE";
-        case OP_CONST: return "CONST";
-        case OP_ICONST8: return "ICONST8";
-        case OP_ICONST16: return "ICONST16";
-        case OP_CLOSURE: return "CLOSURE";
-        case OP_LOAD_LOCAL: return "LOAD_LOCAL";
-        case OP_STORE_LOCAL: return "STORE_LOCAL";
-        case OP_LOAD_UPVALUE: return "LOAD_UPVALUE";
-        case OP_STORE_UPVALUE: return "STORE_UPVALUE";
-        case OP_CLOSE_UPVALUE: return "CLOSE_UPVALUE";
-        case OP_LOAD_GLOBAL: return "LOAD_GLOBAL";
-        case OP_STORE_GLOBAL: return "STORE_GLOBAL";
-        case OP_LOAD_INDEX: return "LOAD_INDEX";
-        case OP_STORE_INDEX: return "STORE_INDEX";
-        case OP_LOAD_FIELD: return "LOAD_FIELD";
-        case OP_STORE_FIELD: return "STORE_FIELD";
-        case OP_ADD: return "ADD";
-        case OP_SUB: return "SUB";
-        case OP_MUL: return "MUL";
-        case OP_DIV: return "DIV";
-        case OP_MOD: return "MOD";
-        case OP_NOT: return "NOT";
-        case OP_NEG: return "NEG";
-        case OP_EQ: return "EQ";
-        case OP_NEQ: return "NEQ";
-        case OP_LT: return "LT";
-        case OP_LE: return "LE";
-        case OP_GT: return "GT";
-        case OP_GE: return "GE";
-        case OP_BIT_OR: return "BIT_OR";
-        case OP_BIT_AND: return "BIT_AND";
-        case OP_BIT_NOT: return "BIT_NOT";
-        case OP_BIT_XOR: return "BIT_XOR";
-        case OP_SHIFT_LEFT: return "SHIFT_LEFT";
-        case OP_SHIFT_RIGHT: return "SHIFT_RIGHT";
-        case OP_DUP: return "DUP";
-        case OP_DUP2: return "DUP2";
-        case OP_JUMP: return "JUMP";
-        case OP_JUMP_IF_FALSE: return "JUMP_IF_FALSE";
-        case OP_JUMP_IF_TRUE: return "JUMP_IF_TRUE";
-        case OP_CALL: return "CALL";
-        case OP_MAKE_ARRAY: return "MAKE_ARRAY";
-        case OP_MAKE_OBJECT: return "MAKE_OBJECT";
-        case OP_POP: return "POP";
-        case OP_PRINT: return "PRINT";
-        case OP_RETURN: return "RETURN";
-        case OP_STRUCT: return "STRUCT";
-        default: return "UNKNOWN";
     }
 }

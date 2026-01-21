@@ -111,14 +111,17 @@ StmtPtr Parser::struct_declaration() {
     return make_stmt<StructStmt>(name, std::move(methods));
 }
 
-// statement → disp_statement | block | if_statement | while_statement | for_statement | return_statement | expr_statement ;
+// statement → disp_statement | block | if_statement | while_statement | for_statement | foreach_statement | return_statement | expr_statement ;
 StmtPtr Parser::statement() {
     if (match(TokenType::Disp))      return disp_statement();
     if (match(TokenType::LeftCurly)) return block();
     if (match(TokenType::If))        return if_statement();
     if (match(TokenType::While))     return while_statement();
     if (match(TokenType::For))       return for_statement();
+    if (match(TokenType::Foreach))   return foreach_statement();
     if (match(TokenType::Return))    return return_statement();
+    if (match(TokenType::Close))     return close_statement();
+    if (match(TokenType::Select))    return select_statement();
     return expr_statement();
 }
 
@@ -185,8 +188,25 @@ StmtPtr Parser::for_statement() {
     return desugar_for(std::move(initializer), std::move(condition), std::move(step), std::move(body));
 }
 
-// TODO:
-// foreach_statement → "for" IDENTIFIER ("," IDENTIFIER)* "in" expression "{" block_statements "}" ;
+// foreach_statement → "foreach" IDENTIFIER ("," IDENTIFIER)? "in" expression "{" block_statements "}" ;
+StmtPtr Parser::foreach_statement() {
+    auto var_name = consume(TokenType::Identifier, "Expect iterator variable name.");
+
+    Token index_name;
+    if (match(TokenType::Comma)) {
+        index_name = consume(TokenType::Identifier, "Expect index variable name.");
+    }
+
+    consume(TokenType::In, "Expect 'in' keyword after iterator variable(s).");
+
+    ExprPtr iterable = expression();
+
+    consume(TokenType::LeftCurly, "Expect '{' after expression.");
+
+    StmtPtr body = block();
+
+    return make_stmt<ForEachStmt>(var_name, index_name, std::move(iterable), std::move(body));
+}
 
 // return_statement → "return" expression? ";" ;
 StmtPtr Parser::return_statement() {
@@ -197,6 +217,83 @@ StmtPtr Parser::return_statement() {
 
     consume(TokenType::Semicolon, "Expect ';' after expression.");
     return make_stmt<ReturnStmt>(std::move(expr));
+}
+
+// close_statement → "close" expression ";" ;
+StmtPtr Parser::close_statement() {
+    ExprPtr expr = expression();
+    consume(TokenType::Semicolon, "Expect ';' after expression.");
+    return make_stmt<CloseStmt>(std::move(expr));
+}
+
+// select_statement → "select" "{" case_clause* default_clause? "}" ;
+// case_clause → { send_clause | recv_clause } "{" block_statements "}" ;
+// default_clause → "else" "{" block_statements "}" ;
+// send_clause → expression "<-" expression ;
+// recv_clause → ( { "let" IDENTIFIER } )? "<-" expression ;
+StmtPtr Parser::select_statement() {
+    consume(TokenType::LeftCurly, "Expect '{' after 'select'.");
+
+    std::vector<SelectSendClause> send_clauses;
+    std::vector<SelectRecvClause> recv_clauses;
+    StmtPtr default_case = nullptr;
+
+    while (!check(TokenType::RightCurly) && !at_end()) {
+        if (match(TokenType::Else)) {
+            if (default_case) {
+                throw ParseError(previous(), "Multiple default clauses in select statement.");
+            }
+
+            consume(TokenType::LeftCurly, "Expect '{' after 'else'.");
+            default_case = block();
+            continue;
+        }
+
+        if (match(TokenType::LeftArrow)) {
+            // receive clause with discard
+            SelectRecvClause recv_clause;
+            recv_clause.pipe_expr = expression();
+            recv_clause.discard = true;
+
+            consume(TokenType::LeftCurly, "Expect '{' after receive clause.");
+            recv_clause.body = block();
+
+            recv_clauses.push_back(std::move(recv_clause));
+        } else if (match(TokenType::Let)) {
+            // receive clause with variable declaration
+            auto var_name = consume(TokenType::Identifier, "Expect variable name.");
+
+            SelectRecvClause recv_clause;
+            recv_clause.var_name = var_name;
+            recv_clause.discard = false;
+
+            consume(TokenType::Assign, "Expect '=' after variable name in receive clause.");
+            consume(TokenType::LeftArrow, "Expect '<-' in receive clause.");
+            recv_clause.pipe_expr = expression();
+
+            consume(TokenType::LeftCurly, "Expect '{' after receive clause.");
+            recv_clause.body = block();
+
+            recv_clauses.push_back(std::move(recv_clause));
+        } else {
+            ExprPtr expr = expression();
+
+            consume(TokenType::LeftArrow, "Expect '<-' in case clause.");
+
+            // send clause
+            SelectSendClause send_clause;
+            send_clause.value_expr = std::move(expr);
+            send_clause.pipe_expr = expression();
+
+            consume(TokenType::LeftCurly, "Expect '{' after send clause.");
+            send_clause.body = block();
+
+            send_clauses.push_back(std::move(send_clause));
+        }
+    }
+
+    consume(TokenType::RightCurly, "Expect '}' after select statement.");
+    return make_stmt<SelectStmt>(std::move(send_clauses), std::move(recv_clauses), std::move(default_case));
 }
 
 // expr_statement → expression ";" ;
@@ -224,9 +321,9 @@ ExprPtr Parser::expression() {
 }
 
 // assignment → (call "." IDENTIFIER | IDENTIFIER) ( "=" | "+=" | "-=" | "*=" | "/=" | "%=" ) assignment
-//            | ternary ;
+//            | send_message ;
 ExprPtr Parser::assignment() {
-    ExprPtr expr = ternary();
+    ExprPtr expr = send_message();
 
     if (match(TokenType::Assign, TokenType::PlusEqual, TokenType::MinusEqual,
               TokenType::MultEqual, TokenType::DivEqual, TokenType::ModEqual))
@@ -256,6 +353,19 @@ ExprPtr Parser::assignment() {
     return expr;
 }
 
+// send_message → ternary ( "<-" ternary )* ;
+ExprPtr Parser::send_message() {
+    ExprPtr expr = ternary();
+
+    while (match(TokenType::LeftArrow)) {
+        Token op = previous();
+        ExprPtr right = ternary();
+        expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+    }
+
+    return expr;
+}
+
 // ternary → logic_or ( "?" expression ":" ternary )* ;
 ExprPtr Parser::ternary() {
     ExprPtr expr = logic_or();
@@ -264,7 +374,24 @@ ExprPtr Parser::ternary() {
         ExprPtr right = expression();
         consume(TokenType::Colon, "Expect ':' after '?' branch of ternary expression");
         ExprPtr left = ternary();
-        expr = make_expr<TernaryExpr>(std::move(expr), std::move(right), std::move(left));
+
+        // Constant folding for ternary operator on literals
+        if (std::holds_alternative<LiteralExpr>(*expr)) {
+            const auto &cond_lit = std::get<LiteralExpr>(*expr).literal;
+
+            if (std::holds_alternative<LiteralExpr>(*right) &&
+                std::holds_alternative<LiteralExpr>(*left)) 
+            {
+                const auto &right_lit = std::get<LiteralExpr>(*right).literal;
+                const auto &left_lit  = std::get<LiteralExpr>(*left).literal;
+
+                expr = make_expr<LiteralExpr>(cond_lit ? right_lit : left_lit);
+            } else {
+                expr = cond_lit ? std::move(right) : std::move(left);
+            }
+        } else {
+            expr = make_expr<TernaryExpr>(std::move(expr), std::move(right), std::move(left));
+        }
     }
 
     return expr;
@@ -277,7 +404,21 @@ ExprPtr Parser::logic_or() {
     while (match(TokenType::Or)) {
         Token op = previous();
         ExprPtr right = logic_and();
-        expr = make_expr<LogicalExpr>(std::move(expr), std::move(right), op);
+
+        // Constant folding for logical operators on literals
+        if (std::holds_alternative<LiteralExpr>(*expr) &&
+            std::holds_alternative<LiteralExpr>(*right)) 
+        {
+            const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
+            const auto &right_lit = std::get<LiteralExpr>(*right).literal;
+
+            switch (op.type) {
+                case TokenType::Or: expr = make_expr<LiteralExpr>(left_lit || right_lit); break;
+                default: break;
+            }
+        } else {
+            expr = make_expr<LogicalExpr>(std::move(expr), std::move(right), op);
+        }
     }
 
     return expr;
@@ -290,7 +431,21 @@ ExprPtr Parser::logic_and() {
     while (match(TokenType::And)) {
         Token op = previous();
         ExprPtr right = equality();
-        expr = make_expr<LogicalExpr>(std::move(expr), std::move(right), op);
+
+        // Constant folding for logical operators on literals
+        if (std::holds_alternative<LiteralExpr>(*expr) &&
+            std::holds_alternative<LiteralExpr>(*right)) 
+        {
+            const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
+            const auto &right_lit = std::get<LiteralExpr>(*right).literal;
+
+            switch (op.type) {
+                case TokenType::And: expr = make_expr<LiteralExpr>(left_lit && right_lit); break;
+                default: break;
+            }
+        } else {
+            expr = make_expr<LogicalExpr>(std::move(expr), std::move(right), op);
+        }
     }
 
     return expr;
@@ -303,7 +458,21 @@ ExprPtr Parser::bit_or() {
     while (match(TokenType::BitOr)) {
         Token op = previous();
         ExprPtr right = equality();
-        expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+
+        // Constant folding for binary operators on literals
+        if (std::holds_alternative<LiteralExpr>(*expr) &&
+            std::holds_alternative<LiteralExpr>(*right)) 
+        {
+            const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
+            const auto &right_lit = std::get<LiteralExpr>(*right).literal;
+
+            switch (op.type) {
+                case TokenType::BitOr: expr = make_expr<LiteralExpr>(left_lit | right_lit); break;
+                default: break;
+            }
+        } else {
+            expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+        }
     }
 
     return expr;
@@ -316,7 +485,21 @@ ExprPtr Parser::bit_xor() {
     while (match(TokenType::BitXor)) {
         Token op = previous();
         ExprPtr right = equality();
-        expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+
+        // Constant folding for binary operators on literals
+        if (std::holds_alternative<LiteralExpr>(*expr) &&
+            std::holds_alternative<LiteralExpr>(*right)) 
+        {
+            const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
+            const auto &right_lit = std::get<LiteralExpr>(*right).literal;
+
+            switch (op.type) {
+                case TokenType::BitXor: expr = make_expr<LiteralExpr>(left_lit ^ right_lit); break;
+                default: break;
+            }
+        } else {
+            expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+        }
     }
 
     return expr;
@@ -329,7 +512,21 @@ ExprPtr Parser::bit_and() {
     while (match(TokenType::BitAnd)) {
         Token op = previous();
         ExprPtr right = equality();
-        expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+
+        // Constant folding for binary operators on literals
+        if (std::holds_alternative<LiteralExpr>(*expr) &&
+            std::holds_alternative<LiteralExpr>(*right)) 
+        {
+            const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
+            const auto &right_lit = std::get<LiteralExpr>(*right).literal;
+
+            switch (op.type) {
+                case TokenType::BitAnd: expr = make_expr<LiteralExpr>(left_lit & right_lit); break;
+                default: break;
+            }
+        } else {
+            expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+        }
     }
 
     return expr;
@@ -342,7 +539,22 @@ ExprPtr Parser::equality() {
     while (match(TokenType::Equal, TokenType::NotEqual)) {
         Token op = previous();
         ExprPtr right = comparison();
-        expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+
+        // Constant folding for binary operators on literals
+        if (std::holds_alternative<LiteralExpr>(*expr) &&
+            std::holds_alternative<LiteralExpr>(*right)) 
+        {
+            const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
+            const auto &right_lit = std::get<LiteralExpr>(*right).literal;
+
+            switch (op.type) {
+                case TokenType::Equal:    expr = make_expr<LiteralExpr>(left_lit == right_lit); break;
+                case TokenType::NotEqual: expr = make_expr<LiteralExpr>(left_lit != right_lit); break;
+                default: break;
+            }
+        } else {
+            expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+        }
     }
 
     return expr;
@@ -354,8 +566,25 @@ ExprPtr Parser::comparison() {
 
     while (match(TokenType::Greater, TokenType::GreaterEqual, TokenType::Less, TokenType::LessEqual)) {
         Token op = previous();
-        ExprPtr right = term();
-        expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+        ExprPtr right = bit_shift();
+
+        // Constant folding for binary operators on literals
+        if (std::holds_alternative<LiteralExpr>(*expr) &&
+            std::holds_alternative<LiteralExpr>(*right)) 
+        {
+            const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
+            const auto &right_lit = std::get<LiteralExpr>(*right).literal;
+
+            switch (op.type) {
+                case TokenType::Greater:      expr = make_expr<LiteralExpr>(left_lit > right_lit); break;
+                case TokenType::GreaterEqual: expr = make_expr<LiteralExpr>(left_lit >= right_lit); break;
+                case TokenType::Less:         expr = make_expr<LiteralExpr>(left_lit < right_lit); break;
+                case TokenType::LessEqual:    expr = make_expr<LiteralExpr>(left_lit <= right_lit); break;
+                default: break;
+            }
+        } else {
+            expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+        }
     }
 
     return expr;
@@ -368,7 +597,22 @@ ExprPtr Parser::bit_shift() {
     while (match(TokenType::BitShiftLeft, TokenType::BitShiftRight)) {
         Token op = previous();
         ExprPtr right = comparison();
-        expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+
+        // Constant folding for binary operators on literals
+        if (std::holds_alternative<LiteralExpr>(*expr) &&
+            std::holds_alternative<LiteralExpr>(*right)) 
+        {
+            const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
+            const auto &right_lit = std::get<LiteralExpr>(*right).literal;
+
+            switch (op.type) {
+                case TokenType::BitShiftLeft:  expr = make_expr<LiteralExpr>(left_lit << right_lit); break;
+                case TokenType::BitShiftRight: expr = make_expr<LiteralExpr>(left_lit >> right_lit); break;
+                default: break;
+            }
+        } else {
+            expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+        }
     }
 
     return expr;
@@ -381,7 +625,22 @@ ExprPtr Parser::term() {
     while (match(TokenType::Plus, TokenType::Minus)) {
         Token op = previous();
         ExprPtr right = factor();
-        expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+
+        // Constant folding for binary operators on literals
+        if (std::holds_alternative<LiteralExpr>(*expr) &&
+            std::holds_alternative<LiteralExpr>(*right)) 
+        {
+            const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
+            const auto &right_lit = std::get<LiteralExpr>(*right).literal;
+
+            switch (op.type) {
+                case TokenType::Plus:  expr = make_expr<LiteralExpr>(left_lit + right_lit); break;
+                case TokenType::Minus: expr = make_expr<LiteralExpr>(left_lit - right_lit); break;
+                default: break;
+            }
+        } else {
+            expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+        }
     }
 
     return expr;
@@ -394,17 +653,46 @@ ExprPtr Parser::factor() {
     while (match(TokenType::Mult, TokenType::Div, TokenType::Mod)) {
         Token op = previous();
         ExprPtr right = unary();
-        expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+
+        // Constant folding for binary operators on literals
+        if (std::holds_alternative<LiteralExpr>(*expr) &&
+            std::holds_alternative<LiteralExpr>(*right)) 
+        {
+            const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
+            const auto &right_lit = std::get<LiteralExpr>(*right).literal;
+
+            switch (op.type) {
+                case TokenType::Mult: expr = make_expr<LiteralExpr>(left_lit * right_lit); break;
+                case TokenType::Div:  expr = make_expr<LiteralExpr>(left_lit / right_lit); break;
+                case TokenType::Mod:  expr = make_expr<LiteralExpr>(left_lit % right_lit); break;
+                default: break;
+            }
+        } else {
+            expr = make_expr<BinaryExpr>(std::move(expr), std::move(right), op);
+        }
     }
 
     return expr;
 }
 
-// unary → ( "!" | "-" | "~" | "++" | "--" ) unary | call ;
+// unary → ( "!" | "-" | "~" | "++" | "--" | "<-" ) unary | call ;
 ExprPtr Parser::unary() {
-    if (match(TokenType::Not, TokenType::Minus, TokenType::BitNot, TokenType::Increment, TokenType::Decrement)) {
+    if (match(TokenType::Not, TokenType::Minus, TokenType::BitNot, TokenType::Increment, TokenType::Decrement, TokenType::LeftArrow)) {
         Token op = previous();
         ExprPtr right = unary();
+
+        // Constant folding for unary operators on literals
+        if (std::holds_alternative<LiteralExpr>(*right)) {
+            const auto &lit = std::get<LiteralExpr>(*right).literal;
+
+            switch (op.type) {
+                case TokenType::Minus:  return make_expr<LiteralExpr>(-lit);
+                case TokenType::Not:    return make_expr<LiteralExpr>(!lit);
+                case TokenType::BitNot: return make_expr<LiteralExpr>(~lit);
+                default: break;
+            }
+        }
+
         return make_expr<UnaryExpr>(std::move(right), op);
     }
 
@@ -449,6 +737,28 @@ ExprPtr Parser::call() {
     return expr;
 }
 
+// in-place replacement of escape sequences in string literals
+void handle_escape_sequences(std::string &str) {
+    while (true) {
+        size_t pos = str.find('\\');
+        if (pos == std::string::npos || pos + 1 >= str.size()) break;
+
+        char esc_char = str[pos + 1];
+        char replacement;
+        switch (esc_char) {
+            case 'n':  replacement = '\n'; break;
+            case 't':  replacement = '\t'; break;
+            case 'r':  replacement = '\r'; break;
+            case '\\': replacement = '\\'; break;
+            case '"':  replacement = '"';  break;
+            case '\'': replacement = '\''; break;
+            default:   replacement = esc_char; break; // unknown escape, keep as is
+        }
+
+        str.replace(pos, 2, 1, replacement);
+    }
+}
+
 // primary → "true" | "false" | "null" | INTEGER | FLOAT | STRING | IDENTIFIER
 //         | "(" expression ")" | array_literal | object_literal | lambda_expression | "self"
 ExprPtr Parser::primary() {
@@ -463,7 +773,11 @@ ExprPtr Parser::primary() {
 
     if (match(TokenType::Integer)) return make_expr<LiteralExpr>(std::stoi(previous().value));
     if (match(TokenType::Float))   return make_expr<LiteralExpr>(std::stod(previous().value));
-    if (match(TokenType::String))  return make_expr<LiteralExpr>(previous().value);
+    if (match(TokenType::String)) {
+        std::string str = previous().value;
+        handle_escape_sequences(str);
+        return make_expr<LiteralExpr>(str);
+    }
 
     if (match(TokenType::Identifier)) return make_expr<VariableExpr>(previous());
     if (match(TokenType::Self)) return make_expr<SelfExpr>(previous());
@@ -492,20 +806,41 @@ ExprPtr Parser::primary() {
 // array_literal → "[" ( expression ( "," expression )* )? "]" ;
 ExprPtr Parser::array_literal() {
     std::vector<ExprPtr> elements;
+    bool all_literals = true;
 
     if (!check(TokenType::RightBracket)) {
         do {
-            elements.push_back(expression());
+            auto elem = expression();
+
+            if (!std::holds_alternative<LiteralExpr>(*elem)) {
+                all_literals = false;
+            }
+
+            elements.push_back(std::move(elem));
         } while (match(TokenType::Comma));
     }
 
     consume(TokenType::RightBracket, "Expect ']' after array elements.");
+    
+    // Constant folding for array literals with all literal elements
+    if (all_literals) {
+        std::vector<Value> values;
+        values.reserve(elements.size());
+        for (const auto &elem : elements) {
+            values.push_back(std::get<LiteralExpr>(*elem).literal);
+        }
+
+        auto array_ptr = std::make_shared<Array>(values);
+        return make_expr<LiteralExpr>(array_ptr);
+    }
+    
     return make_expr<ArrayExpr>(std::move(elements));
 }
 
 // object_literal → "{" ( ( STRING | IDENTIFIER ) ":" expression ( "," ( STRING | IDENTIFIER ) ":" expression )* )? "}" ;
 ExprPtr Parser::object_literal() {
     std::unordered_map<std::string, ExprPtr> items;
+    bool all_literals = true;
 
     if (!check(TokenType::RightCurly)) {
         do {
@@ -519,11 +854,28 @@ ExprPtr Parser::object_literal() {
             consume(TokenType::Colon, "Expect ':' after key in object literal.");
 
             auto value = expression();
+
+            if (!std::holds_alternative<LiteralExpr>(*value)) {
+                all_literals = false;
+            }
+            
             items[key] = std::move(value);
         } while (match(TokenType::Comma));
     }
 
     consume(TokenType::RightCurly, "Expect '}' after object items.");
+
+    // Constant folding for object literals with all literal values
+    if (all_literals) {
+        std::unordered_map<std::string, Value> values;
+        for (const auto &[key, expr] : items) {
+            values[key] = std::get<LiteralExpr>(*expr).literal;
+        }
+        
+        auto object_ptr = std::make_shared<Object>(values);
+        return make_expr<LiteralExpr>(object_ptr);
+    }
+
     return make_expr<ObjectExpr>(std::move(items));
 }
 
@@ -535,7 +887,7 @@ ExprPtr Parser::lambda_expression() {
 
     consume(TokenType::RightParen, "Expect ')' after parameters.");
     
-    if (match(TokenType::Arrow)) {
+    if (match(TokenType::RightArrow)) {
         auto return_expr = expression();
         
         auto body = std::make_shared<std::vector<StmtPtr>>();

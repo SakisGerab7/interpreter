@@ -94,15 +94,13 @@ namespace native_functions {
         }
 
         Value rand(VM &, const std::vector<Value>&) {
-            std::srand(std::time(nullptr));
             return static_cast<double>(std::rand()) / static_cast<double>(RAND_MAX);
         }
 
         Value randint(VM &, const std::vector<Value> &args) {
-            std::srand(std::time(nullptr));
             int min = args[0].as_int();
             int max = args[1].as_int();
-            return min + std::rand() % (max - min + 1);
+            return std::rand() % (max - min + 1) + min;
         }
 
         Value asin(VM &, const std::vector<Value> &args) {
@@ -276,5 +274,48 @@ namespace native_functions {
         vm.current_thread->wake_time = {};
 
         return {};
+    }
+
+    // Value detach(VM &vm, const std::vector<Value> &args) {
+    //     ThreadHandle handle = args[0].as_thread_handle();
+    //     size_t thread_id = handle.ID;
+
+    //     auto thread = vm.scheduler.get_thread_by_id(thread_id);
+    //     if (!thread) {
+    //         throw std::runtime_error("Invalid thread handle");
+    //     }
+
+    //     // If already finished, just remove it
+    //     if (thread->state == GreenThread::Finished) {
+    //         vm.scheduler.kill_thread_and_children(thread);
+    //         return {};
+    //     }
+
+    //     // Mark the thread as detached so it won't be joined later
+    //     thread->detached = true;
+
+    //     // Remove parent - child relationship if any
+    //     vm.current_thread->children.erase(
+    //         std::remove_if(
+    //             vm.current_thread->children.begin(),
+    //             vm.current_thread->children.end(),
+    //             [thread_id](const GreenThread::Ptr &child) {
+    //                 return child->ID == thread_id;
+    //             }
+    //         ),
+    //         vm.current_thread->children.end()
+    //     );
+
+    //     return {};
+    // }
+
+    Value pipe(VM &vm, const std::vector<Value> &args) {
+        int capacity = args[0].as_int();        
+        size_t pipe_id = vm.scheduler.next_pipe_id++;
+
+        auto pipe = std::make_shared<Pipe>(pipe_id, capacity);
+        vm.scheduler.pipes[pipe_id] = pipe;
+
+        return PipeHandle(pipe_id, pipe);
     }
 }

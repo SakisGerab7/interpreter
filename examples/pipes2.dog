@@ -1,0 +1,32 @@
+struct Mutex {
+    fn init() {
+        self.p = pipe(1);
+        self.p <- true;
+    }
+
+    fn lock() {
+        <-self.p;
+    }
+
+    fn unlock() {
+        self.p <- true;
+    }
+};
+
+let m = Mutex();
+let acc = 0;
+
+let ts = spawn 4 {
+    for let i = 0; i < 5; i++ {
+        m.lock();
+
+        disp "thread " + thread_id() + " : acc = " + (++acc);
+        sleep(1000);
+        
+        m.unlock();
+    }
+};
+
+for let i = 0; i < len(ts); i++ {
+    ts[i].join();
+}

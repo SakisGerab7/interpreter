@@ -1,7 +1,7 @@
 #include "codegen.hpp"
 
 Function::Ptr Codegen::compile(const std::shared_ptr<std::vector<StmtPtr>> &statements) {
-    begin_function("main", 0);
+    begin_function("$main", 0);
 
     for (const auto &s : *statements) {
         generate(*s);
@@ -65,9 +65,12 @@ void Codegen::generate(const Stmt &stmt) {
         [&](const BlockStmt &s)    { generate_block(s);    },
         [&](const IfStmt &s)       { generate_if(s);       },
         [&](const WhileStmt &s)    { generate_while(s);    },
+        [&](const ForEachStmt &s)  { generate_foreach(s);  },
         [&](const FunctionStmt &s) { generate_function(s); },
         [&](const ReturnStmt &s)   { generate_return(s);   },
         [&](const StructStmt &s)   { generate_struct(s);   },
+        [&](const CloseStmt &s)    { generate_close(s);    },
+        [&](const SelectStmt &s)   { generate_select(s);   }
     }, stmt);
 }
 
@@ -172,13 +175,13 @@ void Codegen::emit_compound_op(const Token &op) {
     }
 }
 
-int Codegen::emit_jump(OpCode op){
+int Codegen::emit_jump(OpCode op) {
     emit(op);
     emit(static_cast<uint16_t>(0xFFFF)); // placeholder
     return static_cast<int>(curr->chunk.code.size()) - 2;
 }
 
-void Codegen::patch_jump(int pos){
+void Codegen::patch_jump(int pos) {
     int off = static_cast<int>(curr->chunk.code.size()) - (pos + 2);
     curr->chunk.code[pos]     = static_cast<uint8_t>((off >> 8) & 0xFF);
     curr->chunk.code[pos + 1] = static_cast<uint8_t>(off & 0xFF);
@@ -206,58 +209,6 @@ void Codegen::define_variable(const Token &name) {
     uint16_t name_idx = make_constant(name.value);
     emit(OP_DEFINE_GLOBAL);
     emit(name_idx);
-}
-
-void Codegen::define_map_method() {
-    // arguments are on the stack:
-    // - this function (local 0)
-    // - array         (local 1)
-    // - predicate     (local 2)
-
-    // make a new array (local 3)
-    emit(OP_MAKE_ARRAY);
-    emit_iconst8(0); // zero elements
-
-    // make a counter (local 4)
-    emit_iconst8(0); // counter = 0
-
-    // while counter < length of array
-    int loop_start = static_cast<int>(curr->chunk.code.size());
-    emit(OP_LOAD_LOCAL); emit_iconst8(4); // load counter
-    emit(OP_LOAD_GLOBAL); emit(make_constant("len")); // load len function
-    emit(OP_LOAD_LOCAL); emit_iconst8(1); // load array
-    emit(OP_CALL); emit_iconst8(1); // call len with 1 argument
-    // compare
-    emit(OP_LT);
-    int exit_jump = emit_jump(OP_JUMP_IF_FALSE);
-    emit(OP_POP); // pop comparison result
-
-    emit(OP_LOAD_LOCAL); emit_iconst8(3); // load new array
-    emit(OP_LOAD_FIELD); emit(make_constant("push")); // load push method
-    
-    emit(OP_LOAD_LOCAL); emit_iconst8(2); // load predicate
-    emit(OP_LOAD_LOCAL); emit_iconst8(1); // load array
-    emit(OP_LOAD_LOCAL); emit_iconst8(4); // load counter
-    emit(OP_LOAD_INDEX); // index into array
-    emit(OP_CALL); emit_iconst8(1); // call predicate with 1 argument
-
-    emit(OP_CALL); emit_iconst8(1); // call push with 1 argument
-    emit(OP_POP); // pop result of push
-
-    // increment counter
-    emit(OP_LOAD_LOCAL); emit_iconst8(4); // load counter
-    emit_iconst8(1);
-    emit(OP_ADD);
-    emit(OP_STORE_LOCAL); emit_iconst8(4); // store counter
-    emit(OP_POP); // pop old counter value
-
-    emit_loop(loop_start);
-    patch_jump(exit_jump);
-    emit(OP_POP); // pop comparison result
-
-    // load new array as result
-    emit(OP_LOAD_LOCAL); emit_iconst8(3);
-    emit(OP_RETURN);
 }
 
 void Codegen::emit_closure(const Function::Ptr &func, const std::vector<ScopeManager::Upvalue> &upvalues) {
@@ -331,6 +282,43 @@ void Codegen::generate_while(const WhileStmt &stmt) {
 
     patch_jump(exit_jump);
     emit(OP_POP); // pop condition value
+}
+
+void Codegen::generate_foreach(const ForEachStmt &stmt) {
+    generate(*stmt.iterable); // push iterable
+    emit(OP_GET_ITER);        // get iterator
+
+    begin_scope();
+
+    int loop_start = static_cast<int>(curr->chunk.code.size());
+
+    emit(OP_ITER_NEXT);
+    int exit_jump = emit_jump(OP_JUMP_IF_FALSE);
+    emit(OP_POP); // pop iterator result
+
+    // store iterator value in loop variable
+    declare_variable(stmt.iterator);
+    emit(OP_STORE_LOCAL);
+    emit(static_cast<uint8_t>(scopes->locals.size() - 1)); // iterator variable index
+    mark_initialized();
+
+    // if index variable is provided
+    if (stmt.index.value != "") {
+        declare_variable(stmt.index);
+        // load current index from iterator (assumed to be on stack)
+        emit(OP_LOAD_ITER_INDEX);
+        emit(OP_STORE_LOCAL);
+        emit(static_cast<uint8_t>(scopes->locals.size() - 1)); // index variable index
+        mark_initialized();
+    }
+
+    generate(*stmt.body);
+
+    emit_loop(loop_start);
+    patch_jump(exit_jump);
+    emit(OP_POP); // pop iterator result
+
+    end_scope();
 }
 
 void Codegen::generate_function(const FunctionStmt &stmt) {
@@ -432,22 +420,138 @@ void Codegen::generate_struct(const StructStmt &stmt) {
     emit(OP_POP);
 }
 
+void Codegen::generate_close(const CloseStmt &stmt) {
+    generate(*stmt.expr); // evaluate expression
+    emit(OP_CLOSE_PIPE); // close the pipe
+}
+
+void Codegen::generate_select(const SelectStmt &stmt) {
+    begin_scope();
+
+    int num_cases = static_cast<int>(stmt.recv_clauses.size() + stmt.send_clauses.size());
+    emit(OP_SELECT_BEGIN);
+    emit(static_cast<uint8_t>(num_cases));
+
+    std::vector<int> case_jumps, end_jumps;
+
+    // Emit receive clauses
+    for (const auto &recv_clause : stmt.recv_clauses) {
+        generate(*recv_clause.pipe_expr);
+
+        if (!recv_clause.discard) {
+            // Declare variable to store received value
+            declare_variable(recv_clause.var_name);
+            mark_initialized();
+
+            // Emit select recv opcode
+            int case_jump = emit_jump(OP_SELECT_RECV);
+            case_jumps.push_back(case_jump);
+
+            // Emit slot to store received value
+            emit(static_cast<uint8_t>(scopes->locals.size() - 1)); // variable index
+        } else {
+            // Emit select recv opcode without declaration
+            int case_jump = emit_jump(OP_SELECT_RECV);
+            case_jumps.push_back(case_jump);
+
+            emit(static_cast<uint8_t>(0xFF)); // indicate no variable to store
+        }
+    }
+
+    // Emit send clauses
+    for (const auto &send_clause : stmt.send_clauses) {
+        generate(*send_clause.pipe_expr);
+        generate(*send_clause.value_expr);
+        int case_jump = emit_jump(OP_SELECT_SEND);
+        case_jumps.push_back(case_jump);
+    }
+
+    // Emit default clause if present
+    if (stmt.default_body) {
+        int default_jump = emit_jump(OP_SELECT_DEFAULT);
+        case_jumps.push_back(default_jump);
+    }
+
+    // Execute select
+    emit(OP_SELECT_EXEC);
+
+    // Case bodies
+    for (size_t i = 0; i < case_jumps.size(); ++i) {
+        patch_jump(case_jumps[i]);
+
+        if (i < stmt.recv_clauses.size()) {
+            generate(*stmt.recv_clauses[i].body);
+        } else if (i - stmt.recv_clauses.size() < stmt.send_clauses.size()) {
+            generate(*stmt.send_clauses[i - stmt.recv_clauses.size()].body);
+        } else if (stmt.default_body) {
+            generate(*stmt.default_body);
+        }
+
+        if (i != case_jumps.size() - 1) {
+            int end_jump = emit_jump(OP_JUMP);
+            end_jumps.push_back(end_jump);
+        }
+    }
+
+    // Patch all end jumps
+    for (int jump : end_jumps) {
+        patch_jump(jump);
+    }
+
+    end_scope();
+}
+
 void Codegen::generate_binary(const BinaryExpr &expr) {
+    // Optimize for constant expressions
+    if (auto left_lit = std::get_if<LiteralExpr>(&*expr.left)) {
+        if (auto right_lit = std::get_if<LiteralExpr>(&*expr.right)) {
+            // Both sides are literals, we can compute at compile time
+            const Value &left_val = left_lit->literal;
+            const Value &right_val = right_lit->literal;
+            switch (expr.op.type) {
+                case TokenType::Plus:          return emit_constant(left_val + right_val);
+                case TokenType::Minus:         return emit_constant(left_val - right_val);
+                case TokenType::Mult:          return emit_constant(left_val * right_val);
+                case TokenType::Div:           return emit_constant(left_val / right_val);
+                case TokenType::Mod:           return emit_constant(left_val % right_val);
+                case TokenType::Greater:       return emit(left_val > right_val  ? OP_TRUE : OP_FALSE);
+                case TokenType::Less:          return emit(left_val < right_val  ? OP_TRUE : OP_FALSE);
+                case TokenType::GreaterEqual:  return emit(left_val >= right_val ? OP_TRUE : OP_FALSE);
+                case TokenType::LessEqual:     return emit(left_val <= right_val ? OP_TRUE : OP_FALSE);
+                case TokenType::Equal:         return emit(left_val == right_val ? OP_TRUE : OP_FALSE);
+                case TokenType::NotEqual:      return emit(left_val != right_val ? OP_TRUE : OP_FALSE);
+                case TokenType::BitOr:         return emit_constant(left_val | right_val);
+                case TokenType::BitAnd:        return emit_constant(left_val & right_val);
+                case TokenType::BitXor:        return emit_constant(left_val ^ right_val);
+                case TokenType::BitShiftLeft:  return emit_constant(left_val << right_val);
+                case TokenType::BitShiftRight: return emit_constant(left_val >> right_val);
+                default:
+                    throw std::runtime_error("Unknown binary operator in codegen: " + expr.op.value);
+            }
+        }
+    }
+
     generate(*expr.left);
     generate(*expr.right);
 
     switch (expr.op.type) {
-        case TokenType::Plus:         emit(OP_ADD); break;
-        case TokenType::Minus:        emit(OP_SUB); break;
-        case TokenType::Mult:         emit(OP_MUL); break;
-        case TokenType::Div:          emit(OP_DIV); break;
-        case TokenType::Mod:          emit(OP_MOD); break;
-        case TokenType::Greater:      emit(OP_GT);  break;
-        case TokenType::Less:         emit(OP_LT);  break;
-        case TokenType::GreaterEqual: emit(OP_GE);  break;
-        case TokenType::LessEqual:    emit(OP_LE);  break;
-        case TokenType::Equal:        emit(OP_EQ);  break;
-        case TokenType::NotEqual:     emit(OP_NEQ); break;
+        case TokenType::Plus:          emit(OP_ADD);         break;
+        case TokenType::Minus:         emit(OP_SUB);         break;
+        case TokenType::Mult:          emit(OP_MUL);         break;
+        case TokenType::Div:           emit(OP_DIV);         break;
+        case TokenType::Mod:           emit(OP_MOD);         break;
+        case TokenType::Greater:       emit(OP_GT);          break;
+        case TokenType::Less:          emit(OP_LT);          break;
+        case TokenType::GreaterEqual:  emit(OP_GE);          break;
+        case TokenType::LessEqual:     emit(OP_LE);          break;
+        case TokenType::Equal:         emit(OP_EQ);          break;
+        case TokenType::NotEqual:      emit(OP_NEQ);         break;
+        case TokenType::BitOr:         emit(OP_BIT_OR);      break;
+        case TokenType::BitAnd:        emit(OP_BIT_AND);     break;
+        case TokenType::BitXor:        emit(OP_BIT_XOR);     break;
+        case TokenType::BitShiftLeft:  emit(OP_SHIFT_LEFT);  break;
+        case TokenType::BitShiftRight: emit(OP_SHIFT_RIGHT); break;
+        case TokenType::LeftArrow:     emit(OP_SEND_PIPE);   break;
         default:
             throw std::runtime_error("Unknown binary operator in codegen: " + expr.op.value);
     }
@@ -472,6 +576,43 @@ void Codegen::generate_logical(const LogicalExpr &expr) {
 }
 
 void Codegen::generate_unary(const UnaryExpr &expr) {
+    // if expr is literal, we can optimize certain cases
+    if (auto lit = std::get_if<LiteralExpr>(&*expr.right)) {
+        switch (expr.op.type) {
+            case TokenType::Minus:
+                if (lit->literal.is_int()) {
+                    int val = -lit->literal.as_int();
+                    if (val >= INT8_MIN && val <= INT8_MAX) {
+                        emit_iconst8(static_cast<int8_t>(val));
+                        return;
+                    } else if (val >= INT16_MIN && val <= INT16_MAX) {
+                        emit_iconst16(static_cast<int16_t>(val));
+                        return;
+                    }
+                }
+                emit_constant(-lit->literal);
+                return;
+            case TokenType::Not:
+                emit(lit->literal.is_truthy() ? OP_FALSE : OP_TRUE);
+                return;
+            case TokenType::BitNot:
+                if (lit->literal.is_int()) {
+                    int val = ~lit->literal.as_int();
+                    if (val >= INT8_MIN && val <= INT8_MAX) {
+                        emit_iconst8(static_cast<int8_t>(val));
+                        return;
+                    } else if (val >= INT16_MIN && val <= INT16_MAX) {
+                        emit_iconst16(static_cast<int16_t>(val));
+                        return;
+                    }
+                }
+                emit_constant(~lit->literal);
+                return;
+            default:
+                break;
+        }
+    }
+
     switch (expr.op.type) {
         case TokenType::Not: {
             generate(*expr.right);
@@ -521,6 +662,11 @@ void Codegen::generate_unary(const UnaryExpr &expr) {
             else {
                 throw std::runtime_error("Invalid target for unary operator");
             }
+            break;
+        }
+        case TokenType::LeftArrow: {
+            generate(*expr.right);
+            emit(OP_RECV_PIPE);
             break;
         }
         default:
@@ -755,198 +901,84 @@ void Codegen::generate_spawn(const SpawnExpr &expr) {
 }
 
 void Codegen::disassemble_function(const Function::Ptr &func) {
+    std::cout << "\n== " << func->name << " ==\n";
+    std::cout << "Arity: " << func->arity << ", Upvalues: " << func->upvalue_count << "\n";
+    
     const auto &code = func->chunk.code;
-    const auto &consts = func->chunk.constants;
-    size_t pc = 0;
-
-    auto ensure_bytes = [&](size_t need) -> bool {
-        return pc + need <= code.size();
-    };
-
-    auto read_u8 = [&](size_t offset = 1) -> uint8_t {
-        return code[pc + offset];
-    };
-    auto read_u16 = [&](size_t offset = 1) -> uint16_t {
-        return (code[pc + offset] << 8) | code[pc + offset + 1];
-    };
-
-    auto print_addr = [&](size_t addr) {
-        std::cout << std::hex << std::setw(4) << std::setfill('0') << addr << " " << std::dec;
-    };
-
-    auto print_line = [&](const std::string &name, const std::string &extra = "") {
-        std::cout << std::left << std::setw(15) << std::setfill(' ') << name << std::right;
-        if (!extra.empty()) std::cout << " " << extra;
-        std::cout << "\n";
-    };
-
-    auto truncated = [&](const std::string &name) {
-        print_line(name, "<truncated>");
-        pc = code.size();
-    };
-
-    while (pc < code.size()) {
-        OpCode op = static_cast<OpCode>(code[pc]);
-        print_addr(pc);
-
+    const auto &constants = func->chunk.constants;
+    
+    for (size_t i = 0; i < code.size(); ) {
+        printf("%04zu ", i);
+        
+        OpCode op = static_cast<OpCode>(code[i]);
+        std::string op_name = opcode_to_string(op);
+        
+        std::cout << op_name;
+        i++;
+        
+        // Print operands based on opcode type
         switch (op) {
-            // --- 1-byte operand ---
-            case OP_ICONST8: {
-                if (!ensure_bytes(2)) return truncated("ICONST8");
-                int8_t val = static_cast<int8_t>(read_u8());
-                print_line("ICONST8", std::to_string(val));
-                pc += 2;
-                break;
-            }
-
-            case OP_LOAD_LOCAL: case OP_STORE_LOCAL:
-            case OP_LOAD_UPVALUE: case OP_STORE_UPVALUE:
-            case OP_CALL: {
-                if (!ensure_bytes(2)) {
-                    const char* opname = (op == OP_LOAD_LOCAL) ? "LOAD_LOCAL" :
-                                        (op == OP_STORE_LOCAL) ? "STORE_LOCAL" :
-                                        (op == OP_LOAD_UPVALUE) ? "LOAD_UPVALUE" :
-                                        (op == OP_STORE_UPVALUE) ? "STORE_UPVALUE" : "CALL";
-                    return truncated(opname);
-                }
-                uint8_t operand = read_u8();
-                const char* opname = (op == OP_LOAD_LOCAL) ? "LOAD_LOCAL" :
-                                    (op == OP_STORE_LOCAL) ? "STORE_LOCAL" :
-                                    (op == OP_LOAD_UPVALUE) ? "LOAD_UPVALUE" :
-                                    (op == OP_STORE_UPVALUE) ? "STORE_UPVALUE" : "CALL";
-                print_line(opname, std::to_string(operand));
-                pc += 2;
-                break;
-            }
-
-            // --- 2-byte operand ---
-            case OP_DEFINE_GLOBAL: case OP_CONST:
-            case OP_ICONST16: case OP_LOAD_GLOBAL:
-            case OP_STORE_GLOBAL: case OP_LOAD_FIELD:
-            case OP_STORE_FIELD: case OP_MAKE_ARRAY:
-            case OP_MAKE_OBJECT: case OP_JUMP:
-            case OP_JUMP_IF_FALSE: case OP_JUMP_IF_TRUE:
-            case OP_CLOSURE: case OP_STRUCT: case OP_METHOD: {
-                if (!ensure_bytes(3)) return truncated("TRUNCATED_OPERAND");
-
-                int operand = read_u16();
-                const char *opname = nullptr;
-                switch (op) {
-                    case OP_DEFINE_GLOBAL: opname = "DEFINE_GLOBAL"; break;
-                    case OP_CONST:         opname = "CONST"; break;
-                    case OP_ICONST16:      opname = "ICONST16"; break;
-                    case OP_LOAD_GLOBAL:   opname = "LOAD_GLOBAL"; break;
-                    case OP_STORE_GLOBAL:  opname = "STORE_GLOBAL"; break;
-                    case OP_LOAD_FIELD:    opname = "LOAD_FIELD"; break;
-                    case OP_STORE_FIELD:   opname = "STORE_FIELD"; break;
-                    case OP_MAKE_ARRAY:    opname = "MAKE_ARRAY"; break;
-                    case OP_MAKE_OBJECT:   opname = "MAKE_OBJECT"; break;
-                    case OP_JUMP:          opname = "JUMP"; break;
-                    case OP_JUMP_IF_FALSE: opname = "JUMP_IF_FALSE"; break;
-                    case OP_JUMP_IF_TRUE:  opname = "JUMP_IF_TRUE"; break;
-                    case OP_CLOSURE:       opname = "CLOSURE"; break;
-                    case OP_STRUCT:        opname = "STRUCT"; break;
-                    case OP_METHOD:        opname = "METHOD"; break;
-                    default: opname = "UNKNOWN_U16"; break;
-                }
-
-                std::ostringstream extra;
-                extra << operand;
-
-                // context-specific additions
-                auto append_const = [&](int idx) {
-                    if (idx < static_cast<int>(consts.size()))
-                        extra << " (" << consts[idx].to_string() << ")";
-                };
-
-                if (op == OP_CONST || op == OP_LOAD_GLOBAL || op == OP_STORE_GLOBAL ||
-                    op == OP_DEFINE_GLOBAL || op == OP_STRUCT || op == OP_METHOD) {
-                    append_const(operand);
-                } else if (op == OP_ICONST16) {
-                    extra << " " << static_cast<int16_t>(operand);
-                } else if (op == OP_CLOSURE) {
-                    append_const(operand);
-                    auto closed_func = consts[operand].as_function();
-                    for (size_t i = 0; i < closed_func->upvalue_count; ++i) {
-                        // each upvalue has 2 bytes: is_local (1 byte) + index (1 byte)
-                        if (!ensure_bytes(3 + i * 2 + 2)) {
-                            extra << "<truncated>";
-                            break;
-                        }
-                        uint8_t is_local = read_u8(3 + i * 2);
-                        uint8_t index = read_u8(3 + i * 2 + 1);
-                        extra << ", " << (is_local ? "local" : "upvalue") << " " << static_cast<int>(index);
+            case OP_CONST:
+            case OP_LOAD_GLOBAL:
+            case OP_STORE_GLOBAL:
+            case OP_DEFINE_GLOBAL:
+            case OP_LOAD_FIELD:
+            case OP_STORE_FIELD:
+            case OP_CLOSURE:
+            case OP_STRUCT:
+            case OP_METHOD:
+            case OP_MAKE_ARRAY:
+            case OP_MAKE_OBJECT: {
+                if (i + 1 < code.size()) {
+                    uint16_t idx = (static_cast<uint16_t>(code[i]) << 8) | code[i + 1];
+                    printf(" #%u", idx);
+                    if (idx < constants.size()) {
+                        std::cout << " (" << constants[idx] << ")";
                     }
-                    pc += closed_func->upvalue_count * 2;
-                } else if (op == OP_LOAD_FIELD || op == OP_STORE_FIELD) {
-                    append_const(operand);
+                    i += 2;
                 }
-
-                print_line(opname, extra.str());
-                pc += 3;
                 break;
             }
-
-            // --- zero-operand ---
-            default: {
-                const char *opname = nullptr;
-                switch (op) {
-                    case OP_NULL: opname = "NULL"; break;
-                    case OP_TRUE: opname = "TRUE"; break;
-                    case OP_FALSE: opname = "FALSE"; break;
-                    case OP_ADD: opname = "ADD"; break;
-                    case OP_SUB: opname = "SUB"; break;
-                    case OP_MUL: opname = "MUL"; break;
-                    case OP_DIV: opname = "DIV"; break;
-                    case OP_MOD: opname = "MOD"; break;
-                    case OP_NOT: opname = "NOT"; break;
-                    case OP_NEG: opname = "NEG"; break;
-                    case OP_EQ: opname = "EQ"; break;
-                    case OP_NEQ: opname = "NEQ"; break;
-                    case OP_LT: opname = "LT"; break;
-                    case OP_LE: opname = "LE"; break;
-                    case OP_GT: opname = "GT"; break;
-                    case OP_GE: opname = "GE"; break;
-                    case OP_BIT_OR: opname = "BIT_OR"; break;
-                    case OP_BIT_AND: opname = "BIT_AND"; break;
-                    case OP_BIT_NOT: opname = "BIT_NOT"; break;
-                    case OP_BIT_XOR: opname = "BIT_XOR"; break;
-                    case OP_SHIFT_LEFT: opname = "SHIFT_LEFT"; break;
-                    case OP_SHIFT_RIGHT: opname = "SHIFT_RIGHT"; break;
-                    case OP_DUP: opname = "DUP"; break;
-                    case OP_DUP2: opname = "DUP2"; break;
-                    case OP_LOAD_INDEX: opname = "LOAD_INDEX"; break;
-                    case OP_STORE_INDEX: opname = "STORE_INDEX"; break;
-                    case OP_POP: opname = "POP"; break;
-                    case OP_PRINT: opname = "PRINT"; break;
-                    case OP_RETURN: opname = "RETURN"; break;
-                    case OP_CLOSE_UPVALUE: opname = "CLOSE_UPVALUE"; break;
-                    default: break;
+            case OP_LOAD_LOCAL:
+            case OP_STORE_LOCAL:
+            case OP_LOAD_UPVALUE:
+            case OP_STORE_UPVALUE:
+            case OP_CALL:
+            case OP_ICONST8:
+            case OP_SELECT_BEGIN: {
+                if (i < code.size()) {
+                    printf(" %u", code[i]);
+                    i++;
                 }
-
-                if (opname) print_line(opname);
-                else print_line("UNKNOWN", std::to_string(int(code[pc])));
-                pc += 1;
                 break;
             }
-        }
-    }
-
-    // disassemble nested functions and struct methods
-    for (const auto &constant : func->chunk.constants) {
-        if (constant.is_function()) {
-            auto fn = constant.as_function();
-            std::cout << "\n== Disassembly of function: " << fn->name << " ==\n";
-            disassemble_function(fn);
-        } else if (constant.is_struct()) {
-            auto st = constant.as_struct();
-            for (const auto &method_pair : st->methods) {
-                const auto &method_name = method_pair.first;
-                const auto &method_func = method_pair.second.as_function();
-                std::cout << "\n== Disassembly of method: " << st->name << "." << method_name << " ==\n";
-                disassemble_function(method_func);
+            case OP_ICONST16:
+            case OP_JUMP:
+            case OP_JUMP_IF_TRUE:
+            case OP_JUMP_IF_FALSE:
+            case OP_SELECT_SEND:
+            case OP_SELECT_DEFAULT: {
+                if (i + 1 < code.size()) {
+                    uint16_t offset = (static_cast<uint16_t>(code[i]) << 8) | code[i + 1];
+                    printf(" %u", offset);
+                    i += 2;
+                }
+                break;
             }
+            case OP_SELECT_RECV: {
+                if (i + 2 <= code.size()) {
+                    uint16_t offset = (static_cast<uint16_t>(code[i]) << 8) | code[i + 1];
+                    uint8_t var_idx = code[i + 2];
+                    printf(" %u var_idx:%u", offset, var_idx);
+                    i += 3;
+                }
+                break;
+            }
+            default:
+                break;
         }
+        
+        std::cout << "\n";
     }
 }
 

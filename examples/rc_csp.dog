@@ -1,25 +1,27 @@
-let board_req = pipe();
-let board_ack = pipe();
-let exit_ack = pipe();
+let board_req = pipe(10);
+let board_ack = pipe(10);
+let exit_ack = pipe(10);
 
 let capacity = 5;
 
 fn train() {
     while true {
-        let boarded = []
+        let boarded = [];
 
-        let pid;
         for let i = 0; i < capacity; i++ {
-            pid <- board_req;
+            let pid = <-board_req;
             board_ack <- pid;
-            boarded[i] <- pid;
+            boarded.push(pid);
         }
 
         disp "Train starts ride with " + capacity + " passengers.";
-        sleep(2);
+        sleep(2000);
 
         disp "Train ends ride. passengers leave.";
-        boarded.foreach(fn(pid) { exit_ack <- pid; });
+
+        for let i = 0; i < len(boarded); i++ {
+            exit_ack <- boarded[i];
+        }
     }
 }
 
@@ -28,14 +30,18 @@ fn passenger(id, arrival_time) {
     disp "Passenger " + id + " arrived.";
 
     board_req <- id;
-    <- board_ack;
+    <-board_ack;
     disp "Passenger " + id + " boarded.";
 
-    <- exit_ack;
+    <-exit_ack;
     disp "Passenger " + id + " left.";
 }
 
 let n_passengers = 10;
 
-let train_thread = spawn { train(); }
-let passenger_threads = spawn n_passengers { passenger(self.id, randint(1, 10)); }
+let train_thread = spawn { train(); };
+let passenger_threads = spawn n_passengers { passenger(thread_id(), 1000 * randint(1, 10)); };
+
+for let i = 0; i < len(passenger_threads); i++ {
+    passenger_threads[i].join();
+}

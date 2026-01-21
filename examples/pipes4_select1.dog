@@ -1,0 +1,32 @@
+fn producer(interval) {
+    let p = pipe(-1);
+
+    spawn {
+        for let i = 0; i < 10; i++ {
+            p <- i;
+            sleep(interval);
+        }
+    };
+
+    return p;
+}
+
+let p1 = producer(2000);
+let p2 = producer(500);
+
+let count = 0;
+
+while count < 20 {
+    select {
+        let v1 = <-p1 {
+            disp "Received from p1: " + v1;
+            count++;
+        }
+        let v2 = <-p2 {
+            disp "Received from p2: " + v2;
+            count++;
+        }
+    }
+}
+
+disp "Done consuming.";

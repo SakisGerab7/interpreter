@@ -1,7 +1,7 @@
 #pragma once
 
 #include "common.hpp"
-#include "codegen.hpp"
+#include "token.hpp"
 
 struct ScopeManager {
     struct Local {

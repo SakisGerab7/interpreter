@@ -1,0 +1,68 @@
+let acc = 0;
+let log = [];
+
+fn log_msg(msg) {
+    log.push("T" + thread_id() + ": " + msg);
+}
+
+fn busy_work(amount) {
+    for let i = 0; i < amount; i++ {
+        acc += 1;
+    }
+}
+
+fn worker_phase(phase, delay) {
+    log_msg("enter phase " + phase);
+    sleep(delay);
+    busy_work(phase * 5);
+    log_msg("exit phase " + phase);
+    return acc;
+}
+
+let workers = spawn 4 {
+    let tid = thread_id();
+
+    log_msg("started");
+
+    // phase 1: staggered start
+    let r1 = worker_phase(1, tid * 300);
+
+    // phase 2: reversed delay
+    let r2 = worker_phase(2, (5 - tid) * 200);
+
+    // phase 3: no sleep, CPU only
+    log_msg("final phase");
+    busy_work(10);
+
+    log_msg("finished");
+    return {
+        tid: tid,
+        phase1_acc: r1,
+        phase2_acc: r2,
+        final_acc: acc
+    };
+};
+
+// main thread waits and aggregates
+let results = [];
+for let i = 0; i < len(workers); i++ {
+    let res = workers[i].join();
+    results.push(res);
+    disp "joined worker " + res.tid;
+}
+
+// summary
+disp "==== FINAL STATE ====";
+disp "acc = " + acc;
+
+disp "worker results:";
+for let i = 0; i < len(results); i++ {
+    disp results[i];
+}
+
+disp "execution log:";
+for let i = 0; i < len(log); i++ {
+    disp log[i];
+}
+
+disp "program end";

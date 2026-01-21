@@ -31,9 +31,12 @@ struct LetStmt;
 struct BlockStmt;
 struct IfStmt;
 struct WhileStmt;
+struct ForEachStmt;
 struct FunctionStmt;
 struct ReturnStmt;
 struct StructStmt;
+struct CloseStmt;
+struct SelectStmt;
 
 // ==== Type aliases ====
 using Expr = std::variant<
@@ -67,9 +70,12 @@ using Stmt = std::variant<
     BlockStmt,
     IfStmt,
     WhileStmt,
+    ForEachStmt,
     FunctionStmt,
     ReturnStmt,
-    StructStmt
+    StructStmt,
+    CloseStmt,
+    SelectStmt
 >;
 
 using StmtPtr = std::unique_ptr<Stmt>;
@@ -207,6 +213,12 @@ struct WhileStmt {
     StmtPtr body;
 };
 
+struct ForEachStmt {
+    Token iterator, index;
+    ExprPtr iterable;
+    StmtPtr body;
+};
+
 struct FunctionStmt {
     Token name;
     std::vector<Token> params;
@@ -220,4 +232,27 @@ struct ReturnStmt {
 struct StructStmt {
     Token name;
     std::vector<StmtPtr> methods;
+};
+
+struct CloseStmt {
+    ExprPtr expr;
+};
+
+struct SelectSendClause {
+    ExprPtr value_expr;
+    ExprPtr pipe_expr;
+    StmtPtr body;
+};
+
+struct SelectRecvClause {
+    ExprPtr pipe_expr;
+    bool discard;
+    Token var_name;
+    StmtPtr body;
+};
+
+struct SelectStmt {
+    std::vector<SelectSendClause> send_clauses;
+    std::vector<SelectRecvClause> recv_clauses;
+    StmtPtr default_body;
 };

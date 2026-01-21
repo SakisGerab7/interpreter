@@ -1,0 +1,22 @@
+let p = pipe(-1);
+
+let producer = spawn {
+    for let i = 0; i < 6; i++ {
+        p <- i;
+        disp "Produced: " + i;
+    }
+
+    close p;
+};
+
+let consumer = spawn {
+    while (p) {
+        let item = <-p;
+        if (item != null) {
+            disp "Consumed: " + item;
+        }
+    }
+};
+
+producer.join();
+consumer.join();

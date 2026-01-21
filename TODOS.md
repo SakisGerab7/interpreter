@@ -90,8 +90,8 @@
 ## ⚙️ Concurrency
 
 * [x] Coroutine support (`spawn`, `yield`, `await`)
-* [ ] Channels / message-passing
-* [ ] Thread-safe standard library primitives
+* [x] Channels / message-passing
+* [x] Thread-safe standard library primitives
 * [x] Event loop or scheduler
 
 ---

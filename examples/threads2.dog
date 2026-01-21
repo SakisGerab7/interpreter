@@ -1,4 +1,4 @@
-fn main_() {
+fn main() {
     let acc = 0;
 
     let ts = spawn 2 {
@@ -9,7 +9,7 @@ fn main_() {
             acc++;
             disp ((tid == 1) ? "first" : "second") + " thread";
             disp ((tid == 1) ? "first" : "second") + " thread";
-            sleep(500);
+            sleep(1000);
         }
 
         return "thread " + tid + " got acc up to " + acc;
@@ -25,6 +25,6 @@ fn main_() {
     disp "this is the end";
 }
 
-main_();
+main();
 
-return 69;
+return 1;

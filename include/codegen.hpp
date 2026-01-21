@@ -1,45 +1,11 @@
 #pragma once
 
 #include "common.hpp"
+#include "bytecode.hpp"
+#include "runtime.hpp"
 #include "value.hpp"
 #include "ast.hpp"
 #include "scope_manager.hpp"
-
-enum OpCode : uint8_t {
-    OP_DEFINE_GLOBAL,
-    OP_NULL, OP_TRUE, OP_FALSE,
-    OP_CONST,          // operand: constant index
-    OP_ICONST8,        // operand: small signed 8-bit integer
-    OP_ICONST16,       // operand: small signed 16-bit integer
-    OP_LOAD_LOCAL,     // operand: variable name index
-    OP_STORE_LOCAL,    // operand: variable name index
-    OP_LOAD_UPVALUE,   // operand: upvalue index
-    OP_STORE_UPVALUE,  // operand: upvalue index
-    OP_CLOSE_UPVALUE,  // no operand
-    OP_LOAD_GLOBAL,    // operand: variable name index
-    OP_STORE_GLOBAL,   // operand: variable name index
-    OP_LOAD_INDEX,     // pops index + container, pushes value
-    OP_STORE_INDEX,    // pops value + index + container
-    OP_LOAD_FIELD,     // operand: field name index
-    OP_STORE_FIELD,    // operand: field name index
-    OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD, OP_NOT, OP_NEG,
-    OP_EQ, OP_NEQ, OP_LT, OP_LE, OP_GT, OP_GE,
-    OP_BIT_OR, OP_BIT_AND, OP_BIT_NOT, OP_BIT_XOR, OP_SHIFT_LEFT, OP_SHIFT_RIGHT,
-    OP_DUP,            // duplicate top of stack
-    OP_DUP2,           // duplicate top 2 values
-    OP_JUMP,           // unconditional jump, operand = jump offset
-    OP_JUMP_IF_FALSE,  // pop top, if false jump
-    OP_JUMP_IF_TRUE,   // pop top, if true jump
-    OP_CALL,           // operand = argument count
-    OP_MAKE_ARRAY, OP_MAKE_OBJECT,
-    OP_POP,
-    OP_PRINT,
-    OP_RETURN,
-    OP_CLOSURE,        // operand: function index
-    OP_STRUCT,         // operand: struct index
-    OP_METHOD,         // operand: method name index
-    OP_SPAWN
-};
 
 struct Codegen {
     std::shared_ptr<ScopeManager> scopes = nullptr;
@@ -92,9 +58,12 @@ struct Codegen {
     void generate_block(const BlockStmt &stmt);
     void generate_if(const IfStmt &stmt);
     void generate_while(const WhileStmt &stmt);
+    void generate_foreach(const ForEachStmt &stmt);
     void generate_function(const FunctionStmt &stmt);
     void generate_return(const ReturnStmt &stmt);
     void generate_struct(const StructStmt &stmt);
+    void generate_close(const CloseStmt &stmt);
+    void generate_select(const SelectStmt &stmt);
 
     void generate_binary(const BinaryExpr &expr);
     void generate_logical(const LogicalExpr &expr);

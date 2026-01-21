@@ -51,9 +51,12 @@ std::string AstPrinter::print(const Stmt &stmt) {
         [&](const BlockStmt &s)    { return print_block(s);    },
         [&](const IfStmt &s)       { return print_if(s);       },
         [&](const WhileStmt &s)    { return print_while(s);    },
+        [&](const ForEachStmt &s)  { return print_foreach(s);  },
         [&](const FunctionStmt &s) { return print_function(s); },
         [&](const ReturnStmt &s)   { return print_return(s);   },
         [&](const StructStmt &s)   { return print_struct(s);   },
+        [&](const CloseStmt &s)    { return print_close(s);    },
+        [&](const SelectStmt &s)   { return print_select(s);   },
     }, stmt);
 }
 
@@ -275,6 +278,25 @@ std::string AstPrinter::print_while(const WhileStmt &stmt) {
     return out.str();
 }
 
+std::string AstPrinter::print_foreach(const ForEachStmt &stmt) {
+    std::stringstream out;
+    out << indent() << "(" << colored("foreach", Color::Keyword) << " ";
+
+    out << colored(stmt.iterator.value, Color::Ident);
+    if (!stmt.index.value.empty()) {
+        out << " " << colored(stmt.index.value, Color::Ident);
+    }
+
+    out << " " << print(*stmt.iterable) << "\n";
+
+    {
+        IndentGuard guard(indent_level);
+        out << print(*stmt.body) << ")";
+    }
+
+    return out.str();
+}
+
 std::string AstPrinter::print_return(const ReturnStmt &stmt) {
     return indent() + parenthesize(colored("return", Color::Keyword), stmt.value.get());
 }
@@ -290,6 +312,66 @@ std::string AstPrinter::print_struct(const StructStmt &stmt) {
             out << "\n" << print(*s);
         }
     }
+
+    return out.str();
+}
+
+std::string AstPrinter::print_close(const CloseStmt &stmt) {
+    return indent() + parenthesize(colored("close", Color::Keyword), stmt.expr.get());
+}
+
+std::string AstPrinter::print_select(const SelectStmt &stmt) {
+    std::stringstream out;
+    out << indent() << "(" << colored("select", Color::Keyword);
+
+    {
+        IndentGuard guard(indent_level);
+
+        // send clauses
+        for (const auto &send_clause : stmt.send_clauses) {
+            out << "\n" << indent() << "(" << colored("send", Color::Keyword)
+                << " " << print(*send_clause.value_expr)
+                << " " << print(*send_clause.pipe_expr) << "\n";
+            {
+                IndentGuard body_guard(indent_level);
+                out << print(*send_clause.body);
+            }
+
+            out << ")";
+        }
+
+        // receive clauses
+        for (const auto &recv_clause : stmt.recv_clauses) {
+            out << "\n" << indent() << "(" << colored("recv", Color::Keyword);
+
+            if (!recv_clause.discard) {
+                out << " " << colored("let", Color::Keyword) << " ";
+            }
+            
+            out << (recv_clause.var_name.value != "" ? colored(recv_clause.var_name.value, Color::Ident) : "")
+                << " " << print(*recv_clause.pipe_expr) << "\n";
+            {
+                IndentGuard body_guard(indent_level);
+                out << print(*recv_clause.body);
+            }
+
+            out << ")";
+        }
+
+        // default case
+        if (stmt.default_body) {
+            out << "\n" << indent() << "(" << colored("else", Color::Keyword) << "\n";
+
+            {
+                IndentGuard body_guard(indent_level);
+                out << print(*stmt.default_body);
+            }
+            
+            out << ")";
+        }
+    }
+
+    out << ")";
 
     return out.str();
 }

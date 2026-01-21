@@ -1,0 +1,48 @@
+struct WaitGroup {
+    fn init() {
+        self.counter = 0;
+    }
+
+    fn add(n) {
+        self.counter += n;
+    }
+
+    fn done() {
+        self.counter -= 1;
+    }
+
+    fn wait() {
+        while (self.counter > 0) {
+            sleep(0);
+        }
+    }
+}
+
+let p = pipe(0);
+
+let wg = WaitGroup();
+wg.add(2);
+
+let producer = spawn {
+    for let i = 0; i < 6; i++ {
+        p <- i;
+        disp "Produced: " + i;
+    }
+
+    close p;
+    wg.done();
+};
+
+let consumer = spawn {
+    while (p) {
+        let item = <-p;
+        if (item != null) {
+            disp "Consumed: " + item;
+        }
+    }
+
+    wg.done();
+};
+
+wg.wait();
+disp "All done.";

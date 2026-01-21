@@ -1,0 +1,42 @@
+fn main() {
+    let acc = 0;
+
+    let p = pipe(5);
+
+    let ts = spawn 2 {
+        let tid = thread_id();
+        let n = (tid == 1) ? 5 : 8;
+
+        for let i = 0; i < n; i++ {
+            acc++;
+            disp ((tid == 1) ? "first" : "second") + " thread";
+            disp ((tid == 1) ? "first" : "second") + " thread";
+            sleep(500);
+        }
+
+        if tid == 1 {
+            p <- "thread 1: i reached acc = " + acc;
+            close p;
+        }
+
+        if tid == 2 {
+            let v = <- p;
+            disp "thread 2 received message `" + v + "`";
+        }
+
+        return "thread " + tid + " got acc up to " + acc;
+    };
+
+    disp ts;
+
+    for let i = 0; i < len(ts); i++ {
+        disp ts[i].join();
+    }
+
+    disp acc;
+    disp "this is the end";
+}
+
+main();
+
+return 69;

@@ -134,13 +134,13 @@ int run(std::istream &input) {
     }
 
     std::cout << "--------------------------------------------\n";
-
+    
     memtrack::next_phase();
-
+    
     Codegen gen;
     auto main_func = gen.compile(statements);
     gen.disassemble();
-
+    
     std::cout << "--------------------------------------------\n";
 
     memtrack::next_phase();
@@ -174,6 +174,8 @@ int run_file(char *filename) {
 }
 
 int main(int argc, char **argv) {
+    std::srand(std::time(nullptr));
+
     if (argc > 2) {
         std::cerr << "Usage: " << argv[0] << " [source file]\n";
         return 1;

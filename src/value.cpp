@@ -1,13 +1,7 @@
 #include "value.hpp"
-
-uint16_t Chunk::add_constant(const Value &v) {
-    for (uint16_t i = 0; i < constants.size(); i++) {
-        if (constants[i] == v) return i;
-    }
-
-    constants.push_back(v);
-    return static_cast<uint16_t>(constants.size() - 1);
-}
+#include "bytecode.hpp"
+#include "runtime.hpp"
+#include "threading.hpp"
 
 std::string Array::to_string() const {
     std::stringstream ss;
@@ -110,6 +104,7 @@ std::string Value::type_name() const {
     if (is_struct()) return "struct";
     if (is_struct_instance()) return "struct instance";
     if (is_thread_handle()) return "thread handle";
+    if (is_pipe_handle()) return "pipe handle";
     if (is_upvalue()) return "upvalue";
     return "unknown";
 }
@@ -127,7 +122,8 @@ std::string Value::to_string() const {
     if (is_struct())   return as_struct()->to_string();
     if (is_struct_instance()) return as_struct_instance()->to_string();
     if (is_thread_handle()) return "thread " + std::to_string(as_thread_handle().ID);
-    if (is_upvalue()) return "upvalue";
+    if (is_pipe_handle()) return "pipe " + std::to_string(as_pipe_handle().ID);
+    if (is_upvalue()) return as_upvalue()->get().to_string();
     return "null";
 }
 
@@ -145,7 +141,12 @@ bool Value::is_truthy() const {
     if (is_struct())   return true;
     if (is_struct_instance()) return true;
     if (is_thread_handle())   return true;
-    if (is_upvalue())         return true;
+    if (is_pipe_handle()) {
+        auto pipe = as_pipe_handle().pipe_ptr;
+        // std::cout << "Checking pipe truthiness: closed=" << pipe->closed << ", buffer size=" << pipe->buffer.size() << "\n";
+        return pipe && (!pipe->buffer.empty() || !pipe->closed);
+    }
+    if (is_upvalue())         return as_upvalue()->get().is_truthy();
     return false;
 }
 

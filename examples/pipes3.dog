@@ -1,0 +1,25 @@
+fn producer() {
+    let p = pipe(-1);
+
+    spawn {
+        for let i = 0; i < 6; i++ {
+            p <- i;
+            disp "Produced: " + i;
+        }
+
+        close p;
+    };
+
+    return p;
+}
+
+let p = producer();
+
+while p {
+    let v = <-p;
+    if v != null {
+        disp "Consumed: " + v;
+    }
+}
+
+disp "Done consuming.";

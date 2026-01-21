@@ -1,8 +1,3 @@
-fn sleep(n) {
-    let t = clock();
-    while clock() < t + n {}
-}
-
 fn even_or_odd(n) {
     if n % 2 == 0 {
         return "even";
@@ -18,7 +13,7 @@ disp "Countdown:";
 
 for let i = count; i > 0; i -= 1 {
     disp i;
-    sleep(1);
+    sleep(1000);
 }
 
 disp "Go!";
@@ -50,14 +45,12 @@ let result = 0;
 let rolls = 0;
 while result != 6 {
     result = randint(1, 6);
-    rolls = rolls + 1;
+    rolls++;
     disp result;
-    sleep(1);
+    sleep(1000);
 }
 
-disp "It took ";
-disp rolls;
-disp " roll(s) to get a 6.";
+disp "It took " + rolls + " roll(s) to get a 6.";
 
 disp "Testing truthy values:";
 let values = [0, 1, "", "hello", false, true];

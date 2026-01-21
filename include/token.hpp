@@ -16,7 +16,8 @@ enum class TokenType {
     Semicolon,     // ;
     Questionmark,  // ?
     Colon,         // :
-    Arrow,         // ->
+    RightArrow,    // ->
+    LeftArrow,     // <-
     
     Plus,          // +
     Minus,         // -
@@ -63,6 +64,7 @@ enum class TokenType {
     True,
     False,
     For,
+    Foreach,
     In,
     While,
     If,
@@ -72,8 +74,8 @@ enum class TokenType {
     Self,
     Disp,
     Spawn,
-    Yield,
-    Sleep,
+    Close,
+    Select,
 
     Eof
 };

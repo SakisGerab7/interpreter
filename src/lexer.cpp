@@ -28,15 +28,22 @@ Token Lexer::next_token() {
                                         TokenType::Plus); break;
             case '-': return token_from(match('=') ? TokenType::MinusEqual :
                                         match('-') ? TokenType::Decrement :
-                                        match('>') ? TokenType::Arrow :
+                                        match('>') ? TokenType::RightArrow :
                                         TokenType::Minus); break;
 
-            case '*': return token_from(match('=') ? TokenType::MultEqual    : TokenType::Mult);    break; 
-            case '%': return token_from(match('=') ? TokenType::ModEqual     : TokenType::Mod);     break;
-            case '!': return token_from(match('=') ? TokenType::NotEqual     : TokenType::Not);     break;
-            case '>': return token_from(match('=') ? TokenType::GreaterEqual : TokenType::Greater); break;
-            case '<': return token_from(match('=') ? TokenType::LessEqual    : TokenType::Less);    break;
-            case '=': return token_from(match('=') ? TokenType::Equal        : TokenType::Assign);  break;
+            case '*': return token_from(match('=') ? TokenType::MultEqual : TokenType::Mult); break; 
+            case '%': return token_from(match('=') ? TokenType::ModEqual  : TokenType::Mod);  break;
+            case '!': return token_from(match('=') ? TokenType::NotEqual  : TokenType::Not);  break;
+
+            case '>': return token_from(match('=') ? TokenType::GreaterEqual :
+                                        match('>') ? TokenType::BitShiftRight :
+                                        TokenType::Greater); break;
+            case '<': return token_from(match('=') ? TokenType::LessEqual :
+                                        match('<') ? TokenType::BitShiftLeft :
+                                        match('-') ? TokenType::LeftArrow :
+                                        TokenType::Less); break;
+
+            case '=': return token_from(match('=') ? TokenType::Equal : TokenType::Assign); break;
             
             case '&': return token_from(match('&') ? TokenType::And : TokenType::BitAnd); break;
             case '|': return token_from(match('|') ? TokenType::Or  : TokenType::BitOr);  break;
@@ -89,21 +96,24 @@ Token Lexer::next_identifier() {
     while (isalnum(peek()) || peek() == '_') advance();
 
     static std::unordered_map<std::string_view, TokenType> keywords = {
-        { "let",    TokenType::Let      },
-        { "struct", TokenType::Struct   },
-        { "fn",     TokenType::Function },
-        { "true",   TokenType::True     },
-        { "false",  TokenType::False    },
-        { "for",    TokenType::For      },
-        { "in",     TokenType::In       },
-        { "while",  TokenType::While    },
-        { "if",     TokenType::If       },
-        { "else",   TokenType::Else     },
-        { "null",   TokenType::Null     },
-        { "return", TokenType::Return   },
-        { "self",   TokenType::Self     },
-        { "disp",   TokenType::Disp     },
-        { "spawn",  TokenType::Spawn    },
+        { "let",     TokenType::Let      },
+        { "struct",  TokenType::Struct   },
+        { "fn",      TokenType::Function },
+        { "true",    TokenType::True     },
+        { "false",   TokenType::False    },
+        { "for",     TokenType::For      },
+        { "foreach", TokenType::Foreach  },
+        { "in",      TokenType::In       },
+        { "while",   TokenType::While    },
+        { "if",      TokenType::If       },
+        { "else",    TokenType::Else     },
+        { "null",    TokenType::Null     },
+        { "return",  TokenType::Return   },
+        { "self",    TokenType::Self     },
+        { "disp",    TokenType::Disp     },
+        { "spawn",   TokenType::Spawn    },
+        { "close",   TokenType::Close    },
+        { "select",  TokenType::Select   },
     };
 
     if (auto it = keywords.find(src.substr(start, curr - start)); it != keywords.end()) {
