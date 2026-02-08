@@ -21,15 +21,11 @@ while p1 || p2 {
         let v1 = <-p1 {
             if v1 != null {
                 disp "Received from p1: " + v1;
-            } else {
-                p1 = null; // mark p1 as closed
             }
         }
         let v2 = <-p2 {
             if v2 != null {
                 disp "Received from p2: " + v2;
-            } else {
-                p2 = null; // mark p2 as closed
             }
         }
     }

@@ -31,6 +31,7 @@ struct LetStmt;
 struct BlockStmt;
 struct IfStmt;
 struct WhileStmt;
+struct ForStmt;
 struct ForEachStmt;
 struct FunctionStmt;
 struct ReturnStmt;
@@ -70,6 +71,7 @@ using Stmt = std::variant<
     BlockStmt,
     IfStmt,
     WhileStmt,
+    ForStmt,
     ForEachStmt,
     FunctionStmt,
     ReturnStmt,
@@ -210,6 +212,13 @@ struct IfStmt {
 
 struct WhileStmt {
     ExprPtr condition;
+    StmtPtr body;
+};
+
+struct ForStmt {
+    StmtPtr initializer;
+    ExprPtr condition;
+    ExprPtr step;
     StmtPtr body;
 };
 

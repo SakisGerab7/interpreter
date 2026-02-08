@@ -3,7 +3,7 @@
 #include "runtime.hpp"
 #include "threading.hpp"
 
-std::string Array::to_string() const {
+inline std::string Array::to_string() const {
     std::stringstream ss;
     ss << "[";
     for (size_t i = 0; i < elements.size(); ++i) {
@@ -15,7 +15,7 @@ std::string Array::to_string() const {
     return ss.str();
 }
 
-std::string Object::to_string() const {
+inline std::string Object::to_string() const {
     std::stringstream ss;
     ss << "{";
     size_t count = 0;
@@ -41,7 +41,9 @@ Value Value::get_index(const Value &idx) const {
             throw std::runtime_error("Array index out of bounds");
 
         return arr[static_cast<size_t>(i)];
-    } else if (idx.is_string()) {
+    }
+    
+    if (idx.is_string()) {
         std::string k = idx.as_string();
         if (is_object()) {
             const Object &obj = *std::any_cast<Object::Ptr>(data);
@@ -50,18 +52,19 @@ Value Value::get_index(const Value &idx) const {
                 throw std::runtime_error("Key '" + k + "' not found in object");
 
             return it->second;
-        } else if (is_struct_instance()) {
+        }
+
+        if (is_struct_instance()) {
             auto &instance = *std::any_cast<StructInstance::Ptr>(data);
             return instance.get(k);
-        } else {
-            throw std::runtime_error("Cannot access with string key: container type=" 
-                                     + type_name() + ", key=" + k);
         }
+
+        throw std::runtime_error("Cannot access with string key: container type=" 
+                                 + type_name() + ", key=" + k);
     } 
-    else {
-        throw std::runtime_error("Invalid index access: container type=" 
-                                 + type_name() + ", index type=" + idx.type_name());
-    }
+    
+    throw std::runtime_error("Invalid index access: container type=" 
+                             + type_name() + ", index type=" + idx.type_name());
 }
 
 void Value::set_index(const Value &idx, const Value &val) {
@@ -72,7 +75,10 @@ void Value::set_index(const Value &idx, const Value &val) {
 
         Array &arr = *std::any_cast<Array::Ptr>(data);
         arr[static_cast<size_t>(i)] = val;
-    } else if (idx.is_string()) {
+        return;
+    }
+    
+    if (idx.is_string()) {
         std::string k = idx.as_string();
         if (is_object()) {
             Object &obj = *std::any_cast<Object::Ptr>(data);
@@ -84,10 +90,12 @@ void Value::set_index(const Value &idx, const Value &val) {
             throw std::runtime_error("Cannot assign with string key: container type=" 
                                      + type_name() + ", key=" + k);
         }
-    } else {
-        throw std::runtime_error("Invalid index assignment: container type=" 
-                                 + type_name() + ", index type=" + idx.type_name());
-    }
+
+        return;
+    } 
+
+    throw std::runtime_error("Invalid index assignment: container type=" 
+                             + type_name() + ", index type=" + idx.type_name());
 }
 
 std::string Value::type_name() const {
@@ -103,8 +111,8 @@ std::string Value::type_name() const {
     if (is_object()) return "object";
     if (is_struct()) return "struct";
     if (is_struct_instance()) return "struct instance";
-    if (is_thread_handle()) return "thread handle";
-    if (is_pipe_handle()) return "pipe handle";
+    if (is_thread()) return "thread";
+    if (is_pipe())   return "pipe";
     if (is_upvalue()) return "upvalue";
     return "unknown";
 }
@@ -121,8 +129,8 @@ std::string Value::to_string() const {
     if (is_object())   return as_object()->to_string();
     if (is_struct())   return as_struct()->to_string();
     if (is_struct_instance()) return as_struct_instance()->to_string();
-    if (is_thread_handle()) return "thread " + std::to_string(as_thread_handle().ID);
-    if (is_pipe_handle()) return "pipe " + std::to_string(as_pipe_handle().ID);
+    if (is_thread()) return "thread " + std::to_string(as_thread()->ID);
+    if (is_pipe())   return "pipe " + std::to_string(as_pipe()->ID);
     if (is_upvalue()) return as_upvalue()->get().to_string();
     return "null";
 }
@@ -140,10 +148,9 @@ bool Value::is_truthy() const {
     if (is_object())   return !as_object()->empty();
     if (is_struct())   return true;
     if (is_struct_instance()) return true;
-    if (is_thread_handle())   return true;
-    if (is_pipe_handle()) {
-        auto pipe = as_pipe_handle().pipe_ptr;
-        // std::cout << "Checking pipe truthiness: closed=" << pipe->closed << ", buffer size=" << pipe->buffer.size() << "\n";
+    if (is_thread()) return true;
+    if (is_pipe()) {
+        auto pipe = as_pipe();
         return pipe && (!pipe->buffer.empty() || !pipe->closed);
     }
     if (is_upvalue())         return as_upvalue()->get().is_truthy();
@@ -350,4 +357,14 @@ Value operator>>(const Value &lhs, const Value &rhs) {
     if (lhs.is_int() && rhs.is_int())
         return lhs.as_int() >> rhs.as_int();
     throw std::runtime_error("Unsupported types for '>>'");
+}
+
+Value multiply_add(const Value &a, const Value &b, const Value &c) {
+    if (a.is_int() && b.is_int() && c.is_int())
+        return a.as_int() * b.as_int() + c.as_int();
+
+    if ((a.is_int() || a.is_float()) && (b.is_int() || b.is_float()) && (c.is_int() || c.is_float()))
+        return a.as_float() * b.as_float() + c.as_float();
+
+    return (a * b) + c;
 }

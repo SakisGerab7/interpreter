@@ -50,6 +50,7 @@ std::string opcode_to_string(OpCode op) {
         case OP_BIT_XOR: return "BIT_XOR";
         case OP_SHIFT_LEFT: return "SHIFT_LEFT";
         case OP_SHIFT_RIGHT: return "SHIFT_RIGHT";
+        case OP_MUL_ADD: return "MUL_ADD";
         case OP_DUP: return "DUP";
         case OP_DUP2: return "DUP2";
         case OP_JUMP: return "JUMP";

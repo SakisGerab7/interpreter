@@ -9,6 +9,15 @@ struct VM {
     Scheduler scheduler;
     GreenThread::Ptr current_thread;
 
+    // Profiling state
+    bool profile_enabled = false;
+    bool profile_dumped = false;
+    bool profile_time_enabled = false;
+    std::array<uint64_t, 256> opcode_counts{};
+    std::array<uint64_t, 256> opcode_time_ns{};
+    uint64_t total_instructions = 0;
+    uint64_t total_time_ns = 0;
+
     VM();
 
     void spawn_thread(Closure::Ptr closure, size_t thread_count);
@@ -35,5 +44,6 @@ struct VM {
     inline void binary_op(OpCode op);
 
     void debug_instruction(CallFrame &frame, OpCode op);
+    void dump_profile();
     void run();
 };

@@ -93,6 +93,11 @@ namespace native_functions {
             return std::max(args[0].as_float(), args[1].as_float());
         }
 
+        Value srand(VM &, const std::vector<Value> &args) {
+            std::srand(args[0].as_int());
+            return {};
+        }
+
         Value rand(VM &, const std::vector<Value>&) {
             return static_cast<double>(std::rand()) / static_cast<double>(RAND_MAX);
         }
@@ -256,18 +261,19 @@ namespace native_functions {
     }
 
     Value join(VM &vm, const std::vector<Value> &args) {
-        ThreadHandle handle = args[0].as_thread_handle();
-        size_t thread_id = handle.ID;
+        auto thread = args[0].as_thread();
 
-        auto thread = vm.scheduler.get_thread_by_id(thread_id);
+        if (vm.current_thread->ID == thread->ID) {
+            throw std::runtime_error("Thread cannot join itself");
+        }
 
         // If the thread is already finished, return its return value immediately
-        if (!thread || thread->state == GreenThread::Finished) {
-            return vm.scheduler.get_return_value(thread_id);
+        if (thread.get() == nullptr || thread->state == GreenThread::Finished) {
+            return vm.scheduler.get_return_value(thread->ID);
         }
 
         // Map the current thread to the target thread for joining
-        vm.scheduler.join_map[vm.current_thread->ID] = thread_id;
+        thread->joiners.push_back(vm.current_thread);
 
         // Block the current thread
         vm.current_thread->state = GreenThread::Blocked;
@@ -314,8 +320,7 @@ namespace native_functions {
         size_t pipe_id = vm.scheduler.next_pipe_id++;
 
         auto pipe = std::make_shared<Pipe>(pipe_id, capacity);
-        vm.scheduler.pipes[pipe_id] = pipe;
 
-        return PipeHandle(pipe_id, pipe);
+        return pipe;
     }
 }

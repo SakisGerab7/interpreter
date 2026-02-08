@@ -1,0 +1,13 @@
+let listener = socket_listen("0.0.0.0", 8080);
+
+// Accept returns a new socket for each connection
+while true {
+    let client = <-listener; // blocks until new connection
+    
+    spawn {
+        // Handle client in separate thread
+        let request = <-client;
+        client <- "HTTP/1.1 200 OK\r\n\r\nHello!\n";
+        close client;
+    };
+}

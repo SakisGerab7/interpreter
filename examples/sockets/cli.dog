@@ -1,0 +1,23 @@
+let sock1 = socket_connect("127.0.0.1", 8080);
+let sock2 = socket_connect("127.0.0.1", 8081);
+let timeout_pipe = pipe(0);
+
+sock1 <- "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+sock2 <- "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
+
+spawn {
+    sleep(5000); // 5 seconds
+    timeout_pipe <- "timeout";
+};
+
+select {
+    let msg1 = <-sock1 {
+        print("Received from sock1: " + msg1);
+    }
+    let msg2 = <-sock2 {
+        print("Received from sock2: " + msg2);
+    }
+    <-timeout_pipe {
+        print("Timeout reached, exiting.");
+    }
+}

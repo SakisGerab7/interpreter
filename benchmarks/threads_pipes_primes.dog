@@ -1,0 +1,63 @@
+// Threads + pipes benchmark: parallel sum of primes in ranges
+
+fn is_prime(n) {
+    if n < 2 { return false; }
+    if n == 2 { return true; }
+    if n % 2 == 0 { return false; }
+    let limit = int(sqrt(n));
+    let i = 3;
+    while i <= limit {
+        if n % i == 0 { return false; }
+        i += 2;
+    }
+    return true;
+}
+
+fn worker(tasks, results) {
+    let sum = 0;
+    while tasks {
+        let task = <-tasks;
+        if task == null { break; }
+        let start = task[0];
+        let end = task[1];
+        for let n = start; n <= end; n++ {
+            if is_prime(n) { sum += n; }
+        }
+    }
+    results <- sum;
+}
+
+let max_n = 200000;
+let chunk = 5000;
+let workers = 4;
+
+let tasks = pipe(64);
+let results = pipe(64);
+
+let start = clock();
+
+let worker_threads = spawn workers {
+    worker(tasks, results);
+};
+
+for let s = 2; s <= max_n; s += chunk {
+    let e = s + chunk - 1;
+    if e > max_n { e = max_n; }
+    tasks <- [s, e];
+}
+close tasks;
+
+let total = 0;
+for let i = 0; i < workers; i++ {
+    let part = <-results;
+    if part != null { total += part; }
+}
+
+for let i = 0; i < len(worker_threads); i++ {
+    worker_threads[i].join();
+}
+
+let elapsed = clock() - start;
+
+disp "sum=" + total;
+disp "secs=" + elapsed;

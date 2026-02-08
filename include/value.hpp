@@ -12,19 +12,8 @@ struct Object;
 struct Struct;
 struct StructInstance;
 struct Upvalue;
+struct GreenThread;
 struct Pipe;
-
-// Simple handle types for concurrency
-struct ThreadHandle {
-    size_t ID;
-    ThreadHandle(size_t id) : ID(id) {}
-};
-
-struct PipeHandle {
-    size_t ID;
-    std::shared_ptr<Pipe> pipe_ptr;
-    PipeHandle(size_t id, std::shared_ptr<Pipe> ptr = nullptr) : ID(id), pipe_ptr(std::move(ptr)) {}
-};
 
 struct Value {
     std::any data;
@@ -37,6 +26,8 @@ struct Value {
     using StructPtr   = std::shared_ptr<Struct>;
     using StructInstancePtr = std::shared_ptr<StructInstance>;
     using UpvaluePtr  = std::shared_ptr<Upvalue>;
+    using ThreadPtr   = std::shared_ptr<GreenThread>;
+    using PipePtr     = std::shared_ptr<Pipe>;
 
     Value()         : data()  {}
     Value(int i)    : data(i) {}
@@ -55,9 +46,8 @@ struct Value {
     Value(StructPtr strct)        : data(std::move(strct)) {}
     Value(StructInstancePtr inst) : data(std::move(inst)) {}
     Value(UpvaluePtr upval)       : data(std::move(upval)) {}
-
-    Value(ThreadHandle th) : data(th) {}
-    Value(PipeHandle ph)   : data(ph) {}
+    Value(ThreadPtr thread)       : data(std::move(thread)) {}
+    Value(PipePtr pipe)           : data(std::move(pipe)) {}
 
     template <typename T>
     inline bool is() const { return data.type() == typeid(T); }
@@ -74,9 +64,9 @@ struct Value {
     inline bool is_object()   const { return is<ObjectPtr>(); }
     inline bool is_struct()   const { return is<StructPtr>(); }
     inline bool is_struct_instance() const { return is<StructInstancePtr>(); }
-    inline bool is_thread_handle()   const { return is<ThreadHandle>(); }
-    inline bool is_pipe_handle()     const { return is<PipeHandle>(); }
-    inline bool is_upvalue()         const { return is<UpvaluePtr>(); }
+    inline bool is_thread()  const { return is<ThreadPtr>(); }
+    inline bool is_pipe()    const { return is<PipePtr>(); }
+    inline bool is_upvalue() const { return is<UpvaluePtr>(); }
 
     inline int as_int() const {
         if (is_int()) return std::any_cast<int>(data);
@@ -105,8 +95,8 @@ struct Value {
     inline const ObjectPtr& as_object()     const { return as<const ObjectPtr&>("object"); }
     inline const StructPtr& as_struct()     const { return as<const StructPtr&>("struct"); }
     inline const StructInstancePtr& as_struct_instance() const { return as<const StructInstancePtr&>("struct instance"); }
-    inline ThreadHandle as_thread_handle() const { return as<ThreadHandle>("thread handle"); }
-    inline PipeHandle as_pipe_handle()     const { return as<PipeHandle>("pipe handle"); }
+    inline const ThreadPtr& as_thread()     const { return as<const ThreadPtr&>("thread"); }
+    inline const PipePtr& as_pipe()         const { return as<const PipePtr&>("pipe"); }
     inline const UpvaluePtr& as_upvalue()   const { return as<const UpvaluePtr&>("upvalue"); }
 
     Value get_index(const Value &idx) const;
@@ -144,3 +134,5 @@ Value operator^(const Value &lhs, const Value &rhs);
 Value operator&(const Value &lhs, const Value &rhs);
 Value operator<<(const Value &lhs, const Value &rhs);
 Value operator>>(const Value &lhs, const Value &rhs);
+
+Value multiply_add(const Value &a, const Value &b, const Value &c);

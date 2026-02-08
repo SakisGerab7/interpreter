@@ -186,6 +186,7 @@ StmtPtr Parser::for_statement() {
     StmtPtr body = block();
 
     return desugar_for(std::move(initializer), std::move(condition), std::move(step), std::move(body));
+    // return make_stmt<ForStmt>(std::move(initializer), std::move(condition), std::move(step), std::move(body));
 }
 
 // foreach_statement → "foreach" IDENTIFIER ("," IDENTIFIER)? "in" expression "{" block_statements "}" ;
@@ -806,15 +807,15 @@ ExprPtr Parser::primary() {
 // array_literal → "[" ( expression ( "," expression )* )? "]" ;
 ExprPtr Parser::array_literal() {
     std::vector<ExprPtr> elements;
-    bool all_literals = true;
+    // bool all_literals = true;
 
     if (!check(TokenType::RightBracket)) {
         do {
             auto elem = expression();
 
-            if (!std::holds_alternative<LiteralExpr>(*elem)) {
-                all_literals = false;
-            }
+            // if (!std::holds_alternative<LiteralExpr>(*elem)) {
+            //     all_literals = false;
+            // }
 
             elements.push_back(std::move(elem));
         } while (match(TokenType::Comma));
@@ -823,16 +824,16 @@ ExprPtr Parser::array_literal() {
     consume(TokenType::RightBracket, "Expect ']' after array elements.");
     
     // Constant folding for array literals with all literal elements
-    if (all_literals) {
-        std::vector<Value> values;
-        values.reserve(elements.size());
-        for (const auto &elem : elements) {
-            values.push_back(std::get<LiteralExpr>(*elem).literal);
-        }
+    // if (all_literals) {
+    //     std::vector<Value> values;
+    //     values.reserve(elements.size());
+    //     for (const auto &elem : elements) {
+    //         values.push_back(std::get<LiteralExpr>(*elem).literal);
+    //     }
 
-        auto array_ptr = std::make_shared<Array>(values);
-        return make_expr<LiteralExpr>(array_ptr);
-    }
+    //     auto array_ptr = std::make_shared<Array>(values);
+    //     return make_expr<LiteralExpr>(array_ptr);
+    // }
     
     return make_expr<ArrayExpr>(std::move(elements));
 }
@@ -840,7 +841,7 @@ ExprPtr Parser::array_literal() {
 // object_literal → "{" ( ( STRING | IDENTIFIER ) ":" expression ( "," ( STRING | IDENTIFIER ) ":" expression )* )? "}" ;
 ExprPtr Parser::object_literal() {
     std::unordered_map<std::string, ExprPtr> items;
-    bool all_literals = true;
+    // bool all_literals = true;
 
     if (!check(TokenType::RightCurly)) {
         do {
@@ -855,9 +856,9 @@ ExprPtr Parser::object_literal() {
 
             auto value = expression();
 
-            if (!std::holds_alternative<LiteralExpr>(*value)) {
-                all_literals = false;
-            }
+            // if (!std::holds_alternative<LiteralExpr>(*value)) {
+            //     all_literals = false;
+            // }
             
             items[key] = std::move(value);
         } while (match(TokenType::Comma));
@@ -866,15 +867,15 @@ ExprPtr Parser::object_literal() {
     consume(TokenType::RightCurly, "Expect '}' after object items.");
 
     // Constant folding for object literals with all literal values
-    if (all_literals) {
-        std::unordered_map<std::string, Value> values;
-        for (const auto &[key, expr] : items) {
-            values[key] = std::get<LiteralExpr>(*expr).literal;
-        }
+    // if (all_literals) {
+    //     std::unordered_map<std::string, Value> values;
+    //     for (const auto &[key, expr] : items) {
+    //         values[key] = std::get<LiteralExpr>(*expr).literal;
+    //     }
         
-        auto object_ptr = std::make_shared<Object>(values);
-        return make_expr<LiteralExpr>(object_ptr);
-    }
+    //     auto object_ptr = std::make_shared<Object>(values);
+    //     return make_expr<LiteralExpr>(object_ptr);
+    // }
 
     return make_expr<ObjectExpr>(std::move(items));
 }

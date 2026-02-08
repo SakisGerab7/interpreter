@@ -44,6 +44,7 @@ struct AstPrinter {
     std::string print_block(const BlockStmt &stmt);
     std::string print_if(const IfStmt &stmt);
     std::string print_while(const WhileStmt &stmt);
+    std::string print_for(const ForStmt &stmt);
     std::string print_foreach(const ForEachStmt &stmt);
     std::string print_return(const ReturnStmt &stmt);
     std::string print_struct(const StructStmt &stmt);

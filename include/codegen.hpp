@@ -58,6 +58,7 @@ struct Codegen {
     void generate_block(const BlockStmt &stmt);
     void generate_if(const IfStmt &stmt);
     void generate_while(const WhileStmt &stmt);
+    void generate_for(const ForStmt &stmt);
     void generate_foreach(const ForEachStmt &stmt);
     void generate_function(const FunctionStmt &stmt);
     void generate_return(const ReturnStmt &stmt);

@@ -1,5 +1,5 @@
 CC = g++
-CFLAGS = -std=c++17 -g -fsanitize=address
+CFLAGS = -std=c++17 -O3
 SRC_DIR = ./src
 OBJ_DIR = ./obj
 INCLUDE_DIR = ./include

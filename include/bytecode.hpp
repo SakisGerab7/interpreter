@@ -25,6 +25,7 @@ enum OpCode : uint8_t {
     OP_ADD, OP_SUB, OP_MUL, OP_DIV, OP_MOD, OP_NOT, OP_NEG,
     OP_EQ, OP_NEQ, OP_LT, OP_LE, OP_GT, OP_GE,
     OP_BIT_OR, OP_BIT_AND, OP_BIT_NOT, OP_BIT_XOR, OP_SHIFT_LEFT, OP_SHIFT_RIGHT,
+    OP_MUL_ADD,        // special opcode for (a * b) + c optimization, operands: none (pops a, b, c; pushes result)
     OP_DUP,            // duplicate top of stack
     OP_DUP2,           // duplicate top 2 values
     OP_JUMP,           // unconditional jump, operand = jump offset

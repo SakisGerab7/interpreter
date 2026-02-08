@@ -65,6 +65,7 @@ void Codegen::generate(const Stmt &stmt) {
         [&](const BlockStmt &s)    { generate_block(s);    },
         [&](const IfStmt &s)       { generate_if(s);       },
         [&](const WhileStmt &s)    { generate_while(s);    },
+        [&](const ForStmt &s)      { generate_for(s);      },
         [&](const ForEachStmt &s)  { generate_foreach(s);  },
         [&](const FunctionStmt &s) { generate_function(s); },
         [&](const ReturnStmt &s)   { generate_return(s);   },
@@ -282,6 +283,44 @@ void Codegen::generate_while(const WhileStmt &stmt) {
 
     patch_jump(exit_jump);
     emit(OP_POP); // pop condition value
+}
+
+void Codegen::generate_for(const ForStmt &stmt) {
+    begin_scope();
+
+    if (stmt.initializer) {
+        generate(*stmt.initializer);
+    }
+
+    int loop_start = static_cast<int>(curr->chunk.code.size());
+
+    if (stmt.condition) {
+        generate(*stmt.condition);
+        int exit_jump = emit_jump(OP_JUMP_IF_FALSE);
+        emit(OP_POP); // pop condition value
+
+        generate(*stmt.body);
+
+        if (stmt.step) {
+            generate(*stmt.step);
+            emit(OP_POP); // pop step result
+        }
+
+        emit_loop(loop_start);
+        patch_jump(exit_jump);
+        emit(OP_POP); // pop condition value
+    } else {
+        generate(*stmt.body);
+
+        if (stmt.step) {
+            generate(*stmt.step);
+            emit(OP_POP); // pop step result
+        }
+
+        emit_loop(loop_start);
+    }
+
+    end_scope();
 }
 
 void Codegen::generate_foreach(const ForEachStmt &stmt) {
@@ -502,31 +541,23 @@ void Codegen::generate_select(const SelectStmt &stmt) {
 }
 
 void Codegen::generate_binary(const BinaryExpr &expr) {
-    // Optimize for constant expressions
-    if (auto left_lit = std::get_if<LiteralExpr>(&*expr.left)) {
-        if (auto right_lit = std::get_if<LiteralExpr>(&*expr.right)) {
-            // Both sides are literals, we can compute at compile time
-            const Value &left_val = left_lit->literal;
-            const Value &right_val = right_lit->literal;
-            switch (expr.op.type) {
-                case TokenType::Plus:          return emit_constant(left_val + right_val);
-                case TokenType::Minus:         return emit_constant(left_val - right_val);
-                case TokenType::Mult:          return emit_constant(left_val * right_val);
-                case TokenType::Div:           return emit_constant(left_val / right_val);
-                case TokenType::Mod:           return emit_constant(left_val % right_val);
-                case TokenType::Greater:       return emit(left_val > right_val  ? OP_TRUE : OP_FALSE);
-                case TokenType::Less:          return emit(left_val < right_val  ? OP_TRUE : OP_FALSE);
-                case TokenType::GreaterEqual:  return emit(left_val >= right_val ? OP_TRUE : OP_FALSE);
-                case TokenType::LessEqual:     return emit(left_val <= right_val ? OP_TRUE : OP_FALSE);
-                case TokenType::Equal:         return emit(left_val == right_val ? OP_TRUE : OP_FALSE);
-                case TokenType::NotEqual:      return emit(left_val != right_val ? OP_TRUE : OP_FALSE);
-                case TokenType::BitOr:         return emit_constant(left_val | right_val);
-                case TokenType::BitAnd:        return emit_constant(left_val & right_val);
-                case TokenType::BitXor:        return emit_constant(left_val ^ right_val);
-                case TokenType::BitShiftLeft:  return emit_constant(left_val << right_val);
-                case TokenType::BitShiftRight: return emit_constant(left_val >> right_val);
-                default:
-                    throw std::runtime_error("Unknown binary operator in codegen: " + expr.op.value);
+    if (expr.op.type == TokenType::Plus) {
+        if (auto right_bin = std::get_if<BinaryExpr>(&*expr.right)) {
+            if (right_bin->op.type == TokenType::Mult) {
+                generate(*right_bin->left);
+                generate(*right_bin->right);
+                generate(*expr.left);
+                emit(OP_MUL_ADD);
+                return;
+            }
+        }
+        if (auto left_bin = std::get_if<BinaryExpr>(&*expr.left)) {
+            if (left_bin->op.type == TokenType::Mult) {
+                generate(*left_bin->left);
+                generate(*left_bin->right);
+                generate(*expr.right);
+                emit(OP_MUL_ADD);
+                return;
             }
         }
     }
@@ -576,43 +607,6 @@ void Codegen::generate_logical(const LogicalExpr &expr) {
 }
 
 void Codegen::generate_unary(const UnaryExpr &expr) {
-    // if expr is literal, we can optimize certain cases
-    if (auto lit = std::get_if<LiteralExpr>(&*expr.right)) {
-        switch (expr.op.type) {
-            case TokenType::Minus:
-                if (lit->literal.is_int()) {
-                    int val = -lit->literal.as_int();
-                    if (val >= INT8_MIN && val <= INT8_MAX) {
-                        emit_iconst8(static_cast<int8_t>(val));
-                        return;
-                    } else if (val >= INT16_MIN && val <= INT16_MAX) {
-                        emit_iconst16(static_cast<int16_t>(val));
-                        return;
-                    }
-                }
-                emit_constant(-lit->literal);
-                return;
-            case TokenType::Not:
-                emit(lit->literal.is_truthy() ? OP_FALSE : OP_TRUE);
-                return;
-            case TokenType::BitNot:
-                if (lit->literal.is_int()) {
-                    int val = ~lit->literal.as_int();
-                    if (val >= INT8_MIN && val <= INT8_MAX) {
-                        emit_iconst8(static_cast<int8_t>(val));
-                        return;
-                    } else if (val >= INT16_MIN && val <= INT16_MAX) {
-                        emit_iconst16(static_cast<int16_t>(val));
-                        return;
-                    }
-                }
-                emit_constant(~lit->literal);
-                return;
-            default:
-                break;
-        }
-    }
-
     switch (expr.op.type) {
         case TokenType::Not: {
             generate(*expr.right);

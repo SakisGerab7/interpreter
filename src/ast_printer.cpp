@@ -51,6 +51,7 @@ std::string AstPrinter::print(const Stmt &stmt) {
         [&](const BlockStmt &s)    { return print_block(s);    },
         [&](const IfStmt &s)       { return print_if(s);       },
         [&](const WhileStmt &s)    { return print_while(s);    },
+        [&](const ForStmt &s)      { return print_for(s);      },
         [&](const ForEachStmt &s)  { return print_foreach(s);  },
         [&](const FunctionStmt &s) { return print_function(s); },
         [&](const ReturnStmt &s)   { return print_return(s);   },
@@ -272,6 +273,27 @@ std::string AstPrinter::print_while(const WhileStmt &stmt) {
 
     {
         IndentGuard guard(indent_level);
+        out << print(*stmt.body) << ")";
+    }
+
+    return out.str();
+}
+
+std::string AstPrinter::print_for(const ForStmt &stmt) {
+    std::stringstream out;
+    out << indent() << "(" << colored("for", Color::Keyword) << "\n";
+
+    {
+        IndentGuard guard(indent_level);
+        if (stmt.initializer) {
+            out << print(*stmt.initializer) << "\n";
+        }
+        if (stmt.condition) {
+            out << print(*stmt.condition) << "\n";
+        }
+        if (stmt.step) {
+            out << print(*stmt.step) << "\n";
+        }
         out << print(*stmt.body) << ")";
     }
 
