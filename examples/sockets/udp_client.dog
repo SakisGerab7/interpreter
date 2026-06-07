@@ -1,0 +1,22 @@
+let username = cli_args()[1];
+
+let client_sock = dgram("udp", { host: "127.0.0.1", port: 0 });
+let multicast_sock = dgram("udp", { host: "224.0.0.1", port: 5001 });
+
+let payload = pack(len(username), "u32") + username.bytes();
+client_sock.write_to(payload, { host: "127.0.0.1", port: 5000 });
+
+while true {
+    let msg = multicast_sock.recv_from();
+    let count = unpack(msg.data.slice(0, 4), "u32");
+    disp "----- " + count + " Connected Clients -----";
+
+    let offset = 4;
+    for let i = 0; i < count; i++ {
+        let name_len = unpack(msg.data.slice(offset, offset + 4), "u32");
+        offset += 4;
+        let name = msg.data.slice(offset, offset + name_len).str();
+        offset += name_len;
+        disp "  username: " + name;
+    }
+}

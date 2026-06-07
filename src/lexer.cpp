@@ -97,6 +97,7 @@ Token Lexer::next_identifier() {
 
     static std::unordered_map<std::string_view, TokenType> keywords = {
         { "let",     TokenType::Let      },
+        { "const",   TokenType::Const    },
         { "struct",  TokenType::Struct   },
         { "fn",      TokenType::Function },
         { "true",    TokenType::True     },

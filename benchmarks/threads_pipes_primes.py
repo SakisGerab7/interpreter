@@ -35,8 +35,8 @@ def worker(tasks: Queue, results: Queue) -> None:
 
 
 def main() -> None:
-    max_n = 200_000
-    chunk = 5_000
+    max_n = 256 * 1024
+    chunk = 1024
     workers = 4
 
     tasks: Queue = Queue(maxsize=64)
@@ -67,7 +67,7 @@ def main() -> None:
     elapsed = time.perf_counter() - start
 
     print(f"sum={total}")
-    print(f"secs={elapsed}")
+    print(f"secs={elapsed:.4f} seconds")
 
 
 if __name__ == "__main__":

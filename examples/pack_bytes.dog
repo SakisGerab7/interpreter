@@ -1,0 +1,11 @@
+
+let bytes = pack(1, "u8") + pack(2, "u16") + pack(3, "u32") + pack(-4.0, "f32");
+
+disp bytes;
+
+let a = unpack(pack(1, "u8"), "u8");
+let b = unpack(pack(2, "u16"), "u16");
+let c = unpack(pack(3, "u32"), "u32");
+let d = unpack(pack(-4.0, "f32"), "f32");
+
+disp [a, b, c, d];

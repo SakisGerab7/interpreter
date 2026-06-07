@@ -1,0 +1,12 @@
+
+let a = [1, 2, 3];
+
+a.for_each(fn(x) { disp ">> " + x + " <<"; });
+
+let b = a.map(fn(x) -> 2 * x);
+
+disp b;
+
+let c = a.map(sqrt);
+
+disp c;

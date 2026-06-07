@@ -100,9 +100,9 @@
 
 ### 🔌 Core Networking
 
-* [ ] Socket API (open/close, send, receive)
-* [ ] TCP client
-* [ ] TCP server
+* [x] Socket API (open/close, send, receive)
+* [x] TCP client
+* [x] TCP server
 * [ ] UDP client/server
 
 ### 🌐 Higher-level Networking

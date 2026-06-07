@@ -1,0 +1,34 @@
+let f = open("tmp/file_stream_lines_test.txt", "r");
+
+let p = pipe(10);
+
+fn readLine(f) {
+    return f.read_line().str().trim();
+}
+
+spawn 6 {
+    let running = true;
+    while running {
+        sleep(randint(1, 10) * 100);
+
+        let b = f.read_line();
+
+        if b == null {
+            running = false;
+        } else {
+            let s = b.str().trim();
+            if s == "" {
+                running = false;
+            } else {
+                p <- "thread " + thread_id() + " got : " + s;
+            }
+        }
+    }
+
+    close p;
+    f.close_();
+};
+
+while p {
+    disp <-p;
+}

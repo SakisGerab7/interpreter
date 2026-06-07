@@ -12,6 +12,14 @@ struct ScopeManager {
         Local(const std::string &name) : name(name), depth(-1), is_captured(false) {}
     };
 
+    struct LocalConst {
+        std::string name;
+        int depth;
+        Value value;
+
+        LocalConst(const std::string &name) : name(name), depth(-1), value() {}
+    };
+
     struct Upvalue {
         uint8_t index;
         bool is_local;
@@ -21,6 +29,7 @@ struct ScopeManager {
 
     std::shared_ptr<ScopeManager> parent;
     std::vector<Local> locals;
+    std::vector<LocalConst> local_consts;
     std::vector<Upvalue> upvalues;
     int scope_depth = 0;
 
@@ -64,9 +73,28 @@ struct ScopeManager {
         locals.emplace_back(name.value);
     }
 
+    void declare_const(const Token &name) {
+        // Can be global or local constant
+        for (int i = static_cast<int>(local_consts.size()) - 1; i >= 0; i--) {
+            if (local_consts[i].depth != -1 && local_consts[i].depth < scope_depth) {
+                break;
+            }
+            if (local_consts[i].name == name.value) {
+                throw std::runtime_error("Constant with this name already declared in this scope: " + name.value);
+            }
+        }
+
+        local_consts.emplace_back(name.value);
+    }
+
     void mark_initialized() {
         if (scope_depth == 0) return;
         locals.back().depth = scope_depth;
+    }
+
+    void initialize_const(const Value &value) {
+        local_consts.back().depth = scope_depth;
+        local_consts.back().value = value;
     }
 
     int resolve_local(const Token &name) {
@@ -128,5 +156,20 @@ struct ScopeManager {
         }
 
         return { VarType::Global, -1 };
+    }
+
+    Value resolve_const(const Token &name) {
+        for (int i = static_cast<int>(local_consts.size()) - 1; i >= 0; i--) {
+            if (local_consts[i].name == name.value) {
+                if (local_consts[i].depth != -1) return local_consts[i].value;
+                throw std::runtime_error("Cannot read local constant in its own initializer: " + name.value);
+            }
+        }
+
+        if (parent) {
+            return parent->resolve_const(name);
+        }
+
+        throw std::runtime_error("Constant not found: " + name.value);
     }
 };

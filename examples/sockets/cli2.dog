@@ -1,0 +1,20 @@
+let username = cli_args()[1];
+
+let conn = connect("tcp", { host: "127.0.0.1", port: 8080 });
+
+disp username + " connected. local address: " + conn.local_addr + ". remote address: " + conn.remote_addr;
+
+let payload = pack(len(username), "u32") + username.bytes();
+conn.write(payload);
+
+while true {
+    let count = unpack(conn.read(4), "u32");
+    disp "----- " + count + " Connected Clients -----";
+
+    for let i = 0; i < count; i++ {
+        let fd = unpack(conn.read(4), "u32");
+        let name_len = unpack(conn.read(4), "u32");
+        let name = conn.read(name_len).str();
+        disp "fd: " + fd + ", username: " + name;
+    }
+}

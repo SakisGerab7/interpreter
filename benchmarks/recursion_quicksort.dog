@@ -1,9 +1,5 @@
 // Recursive quicksort benchmark (recursion + arrays)
 
-fn lcg_next(x) {
-    return (x * 1103515245 + 12345) % 2147483647;
-}
-
 fn swap(arr, i, j) {
     let tmp = arr[i];
     arr[i] = arr[j];
@@ -33,13 +29,11 @@ fn quicksort(arr, left, right) {
     if index < right { quicksort(arr, index, right); }
 }
 
-let n = 200000;
-let seed = 1234567;
+let n = 1 * 1024; // 16K elements
 let arr = [];
 
 for let i = 0; i < n; i++ {
-    seed = lcg_next(seed);
-    arr.push(seed % 1000000);
+    arr.push(randint(0, 1000000));
 }
 
 let start = clock();

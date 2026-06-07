@@ -1,0 +1,821 @@
+{
+  "objects": {
+    "1": {
+      "type": "Function",
+      "name": "$main",
+      "arity": 0,
+      "upvalue_count": 0,
+      "chunk": {
+        "code": [49, 0, 0, 0, 0, 1, 12, 0, 1, 43, 0, 0, 0, 2, 12, 0, 2, 43, 0, 47, 12, 0, 2, 43, 0, 47, 12, 0, 2, 43, 0, 47, 12, 0, 2, 43, 0, 47, 12, 0, 2, 43, 0, 47, 12, 0, 3, 6, 19, 136, 43, 1, 46, 1, 48],
+        "constants": [
+          {
+            "object_id": 2,
+            "type": "Function"
+          },
+          "make_counter",
+          "my_counter",
+          "sleep"
+        ]
+      }
+    },
+    "2": {
+      "type": "Function",
+      "name": "make_counter",
+      "arity": 0,
+      "upvalue_count": 0,
+      "chunk": {
+        "code": [5, 0, 49, 0, 0, 1, 1, 7, 2, 48, 46, 11, 1, 48],
+        "constants": [
+          {
+            "object_id": 3,
+            "type": "Function"
+          }
+        ]
+      }
+    },
+    "3": {
+      "type": "Function",
+      "name": "counter",
+      "arity": 0,
+      "upvalue_count": 1,
+      "chunk": {
+        "code": [9, 0, 5, 1, 18, 10, 0, 48, 1, 48],
+        "constants": [
+        ]
+      }
+    },
+    "4": {
+      "type": "Array",
+      "elements": [
+        "examples/acc.dog"
+      ]
+    },
+    "5": {
+      "type": "Native",
+      "name": "cli_args",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "6": {
+      "type": "Native",
+      "name": "clock",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "7": {
+      "type": "Native",
+      "name": "len",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "8": {
+      "type": "Native",
+      "name": "str",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "9": {
+      "type": "Native",
+      "name": "int",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "10": {
+      "type": "Native",
+      "name": "float",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "11": {
+      "type": "Native",
+      "name": "type",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "12": {
+      "type": "Native",
+      "name": "String.upper",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "13": {
+      "type": "Native",
+      "name": "String.lower",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "14": {
+      "type": "Native",
+      "name": "String.trim",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "15": {
+      "type": "Native",
+      "name": "String.split",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "16": {
+      "type": "Native",
+      "name": "String.bytes",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "17": {
+      "type": "Native",
+      "name": "ByteArray.str",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "18": {
+      "type": "Native",
+      "name": "arange",
+      "arity": 3,
+      "bound_instance": null
+    },
+    "19": {
+      "type": "Native",
+      "name": "Array.push",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "20": {
+      "type": "Native",
+      "name": "Array.pop",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "21": {
+      "type": "Native",
+      "name": "Array.shift",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "22": {
+      "type": "Native",
+      "name": "Array.unshift",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "23": {
+      "type": "Native",
+      "name": "Array.slice",
+      "arity": 2,
+      "bound_instance": null
+    },
+    "24": {
+      "type": "Native",
+      "name": "Array.sum",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "25": {
+      "type": "Native",
+      "name": "Array.for_each",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "26": {
+      "type": "Native",
+      "name": "Array.map",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "27": {
+      "type": "Native",
+      "name": "pow",
+      "arity": 2,
+      "bound_instance": null
+    },
+    "28": {
+      "type": "Native",
+      "name": "abs",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "29": {
+      "type": "Native",
+      "name": "round",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "30": {
+      "type": "Native",
+      "name": "sqrt",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "31": {
+      "type": "Native",
+      "name": "sin",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "32": {
+      "type": "Native",
+      "name": "cos",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "33": {
+      "type": "Native",
+      "name": "tan",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "34": {
+      "type": "Native",
+      "name": "floor",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "35": {
+      "type": "Native",
+      "name": "ceil",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "36": {
+      "type": "Native",
+      "name": "min",
+      "arity": 2,
+      "bound_instance": null
+    },
+    "37": {
+      "type": "Native",
+      "name": "max",
+      "arity": 2,
+      "bound_instance": null
+    },
+    "38": {
+      "type": "Native",
+      "name": "srand",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "39": {
+      "type": "Native",
+      "name": "rand",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "40": {
+      "type": "Native",
+      "name": "randint",
+      "arity": 2,
+      "bound_instance": null
+    },
+    "41": {
+      "type": "Native",
+      "name": "asin",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "42": {
+      "type": "Native",
+      "name": "acos",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "43": {
+      "type": "Native",
+      "name": "atan",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "44": {
+      "type": "Native",
+      "name": "log2",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "45": {
+      "type": "Native",
+      "name": "log10",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "46": {
+      "type": "Native",
+      "name": "ln",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "47": {
+      "type": "Native",
+      "name": "exp",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "48": {
+      "type": "Native",
+      "name": "sleep",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "49": {
+      "type": "Native",
+      "name": "thread_id",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "50": {
+      "type": "Native",
+      "name": "Thread.join",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "51": {
+      "type": "Native",
+      "name": "Thread.detach",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "52": {
+      "type": "Native",
+      "name": "pipe",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "53": {
+      "type": "IOHandle",
+      "kind": 5,
+      "fd": 0,
+      "closed": false,
+      "read_interest": false,
+      "write_interest": false,
+      "metadata": {
+        "path": "",
+        "local_address": "",
+        "remote_address": ""
+      },
+      "reads": [
+      ],
+      "writes": [
+      ],
+      "accepts": [
+      ],
+      "connects": [
+      ],
+      "read_buffer": [],
+      "write_buffer": []
+    },
+    "54": {
+      "type": "IOHandle",
+      "kind": -1094795586,
+      "fd": -1094795586,
+      "closed": false,
+      "read_interest": false,
+      "write_interest": false,
+      "metadata": {
+        "path": "",
+        "local_address": "",
+        "remote_address": ""
+      },
+      "reads": [
+      ],
+      "writes": [
+      ],
+      "accepts": [
+      ],
+      "connects": [
+      ],
+      "read_buffer": [],
+      "write_buffer": []
+    },
+    "55": {
+      "type": "IOHandle",
+      "kind": -1094795586,
+      "fd": -1094795586,
+      "closed": false,
+      "read_interest": false,
+      "write_interest": false,
+      "metadata": {
+        "path": "",
+        "local_address": "",
+        "remote_address": ""
+      },
+      "reads": [
+      ],
+      "writes": [
+      ],
+      "accepts": [
+      ],
+      "connects": [
+      ],
+      "read_buffer": [],
+      "write_buffer": []
+    },
+    "56": {
+      "type": "Native",
+      "name": "listen",
+      "arity": 2,
+      "bound_instance": null
+    },
+    "57": {
+      "type": "Native",
+      "name": "connect",
+      "arity": 2,
+      "bound_instance": null
+    },
+    "58": {
+      "type": "Native",
+      "name": "open",
+      "arity": 2,
+      "bound_instance": null
+    },
+    "59": {
+      "type": "Native",
+      "name": "IOHandle.read",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "60": {
+      "type": "Native",
+      "name": "IOHandle.read_until_delimiter",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "61": {
+      "type": "Native",
+      "name": "IOHandle.read_line",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "62": {
+      "type": "Native",
+      "name": "IOHandle.read_all",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "63": {
+      "type": "Native",
+      "name": "IOHandle.write",
+      "arity": 1,
+      "bound_instance": null
+    },
+    "64": {
+      "type": "Native",
+      "name": "IOHandle.accept",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "65": {
+      "type": "Native",
+      "name": "IOHandle.close_",
+      "arity": 0,
+      "bound_instance": null
+    },
+    "66": {
+      "type": "Native",
+      "name": "pack",
+      "arity": 2,
+      "bound_instance": null
+    },
+    "67": {
+      "type": "Native",
+      "name": "unpack",
+      "arity": 2,
+      "bound_instance": null
+    },
+    "68": {
+      "type": "Closure",
+      "func_id": 1,
+      "upvalues": [
+      ]
+    },
+    "69": {
+      "type": "Thread",
+      "ID": 0,
+      "state": 2,
+      "wake_time_rem": 4532,
+      "detached": false,
+      "return_value": null,
+      "pending_value": null,
+      "parent_id": null,
+      "joiner_ids": [],
+      "child_ids": [],
+      "active_select": null,
+      "ctx": {
+        "stack": [
+          {
+            "object_id": 68,
+            "type": "Closure"
+          },
+          null
+        ],
+        "callframes": [
+          {
+            "closure_id": 68,
+            "base": 0,
+            "ip": 52
+}
+        ],
+        "open_upvalue_ids": []
+      }
+    },
+    "70": {
+      "type": "Closure",
+      "func_id": 2,
+      "upvalues": [
+      ]
+    },
+    "71": {
+      "type": "Closure",
+      "func_id": 3,
+      "upvalues": [
+        {
+          "object_id": 72,
+          "type": "Upvalue"
+        }
+      ]
+    },
+    "72": {
+      "type": "Upvalue",
+      "owner_thread_id": null,
+      "slot_index": -1,
+      "closed": 5
+    }
+  },
+  "globals": {
+    "my_counter": {
+      "object_id": 71,
+      "type": "Closure"
+    },
+    "unpack": {
+      "object_id": 67,
+      "type": "Native"
+    },
+    "pack": {
+      "object_id": 66,
+      "type": "Native"
+    },
+    "IOHandle.close_": {
+      "object_id": 65,
+      "type": "Native"
+    },
+    "IOHandle.accept": {
+      "object_id": 64,
+      "type": "Native"
+    },
+    "cos": {
+      "object_id": 32,
+      "type": "Native"
+    },
+    "IOHandle.read": {
+      "object_id": 59,
+      "type": "Native"
+    },
+    "sqrt": {
+      "object_id": 30,
+      "type": "Native"
+    },
+    "round": {
+      "object_id": 29,
+      "type": "Native"
+    },
+    "len": {
+      "object_id": 7,
+      "type": "Native"
+    },
+    "pi": 3.141593,
+    "sin": {
+      "object_id": 31,
+      "type": "Native"
+    },
+    "ln": {
+      "object_id": 46,
+      "type": "Native"
+    },
+    "Array.shift": {
+      "object_id": 21,
+      "type": "Native"
+    },
+    "Array.pop": {
+      "object_id": 20,
+      "type": "Native"
+    },
+    "String.bytes": {
+      "object_id": 16,
+      "type": "Native"
+    },
+    "make_counter": {
+      "object_id": 70,
+      "type": "Closure"
+    },
+    "Array.for_each": {
+      "object_id": 25,
+      "type": "Native"
+    },
+    "Array.unshift": {
+      "object_id": 22,
+      "type": "Native"
+    },
+    "Array.push": {
+      "object_id": 19,
+      "type": "Native"
+    },
+    "ceil": {
+      "object_id": 35,
+      "type": "Native"
+    },
+    "clock": {
+      "object_id": 6,
+      "type": "Native"
+    },
+    "stdin": {
+      "object_id": 53,
+      "type": "IOHandle"
+    },
+    "str": {
+      "object_id": 8,
+      "type": "Native"
+    },
+    "int": {
+      "object_id": 9,
+      "type": "Native"
+    },
+    "IOHandle.write": {
+      "object_id": 63,
+      "type": "Native"
+    },
+    "abs": {
+      "object_id": 28,
+      "type": "Native"
+    },
+    "pow": {
+      "object_id": 27,
+      "type": "Native"
+    },
+    "Thread.join": {
+      "object_id": 50,
+      "type": "Native"
+    },
+    "open": {
+      "object_id": 58,
+      "type": "Native"
+    },
+    "Array.sum": {
+      "object_id": 24,
+      "type": "Native"
+    },
+    "float": {
+      "object_id": 10,
+      "type": "Native"
+    },
+    "type": {
+      "object_id": 11,
+      "type": "Native"
+    },
+    "min": {
+      "object_id": 36,
+      "type": "Native"
+    },
+    "atan": {
+      "object_id": 43,
+      "type": "Native"
+    },
+    "Array.map": {
+      "object_id": 26,
+      "type": "Native"
+    },
+    "floor": {
+      "object_id": 34,
+      "type": "Native"
+    },
+    "IOHandle.read_until_delimiter": {
+      "object_id": 60,
+      "type": "Native"
+    },
+    "String.upper": {
+      "object_id": 12,
+      "type": "Native"
+    },
+    "max": {
+      "object_id": 37,
+      "type": "Native"
+    },
+    "rand": {
+      "object_id": 39,
+      "type": "Native"
+    },
+    "String.trim": {
+      "object_id": 14,
+      "type": "Native"
+    },
+    "String.split": {
+      "object_id": 15,
+      "type": "Native"
+    },
+    "ByteArray.str": {
+      "object_id": 17,
+      "type": "Native"
+    },
+    "asin": {
+      "object_id": 41,
+      "type": "Native"
+    },
+    "srand": {
+      "object_id": 38,
+      "type": "Native"
+    },
+    "Array.slice": {
+      "object_id": 23,
+      "type": "Native"
+    },
+    "listen": {
+      "object_id": 56,
+      "type": "Native"
+    },
+    "randint": {
+      "object_id": 40,
+      "type": "Native"
+    },
+    "stderr": {
+      "object_id": 55,
+      "type": "IOHandle"
+    },
+    "thread_id": {
+      "object_id": 49,
+      "type": "Native"
+    },
+    "acos": {
+      "object_id": 42,
+      "type": "Native"
+    },
+    "tan": {
+      "object_id": 33,
+      "type": "Native"
+    },
+    "log10": {
+      "object_id": 45,
+      "type": "Native"
+    },
+    "log2": {
+      "object_id": 44,
+      "type": "Native"
+    },
+    "exp": {
+      "object_id": 47,
+      "type": "Native"
+    },
+    "sleep": {
+      "object_id": 48,
+      "type": "Native"
+    },
+    "String.lower": {
+      "object_id": 13,
+      "type": "Native"
+    },
+    "Thread.detach": {
+      "object_id": 51,
+      "type": "Native"
+    },
+    "arange": {
+      "object_id": 18,
+      "type": "Native"
+    },
+    "pipe": {
+      "object_id": 52,
+      "type": "Native"
+    },
+    "stdout": {
+      "object_id": 54,
+      "type": "IOHandle"
+    },
+    "cli_args": {
+      "object_id": 5,
+      "type": "Native"
+    },
+    "connect": {
+      "object_id": 57,
+      "type": "Native"
+    },
+    "IOHandle.read_line": {
+      "object_id": 61,
+      "type": "Native"
+    },
+    "IOHandle.read_all": {
+      "object_id": 62,
+      "type": "Native"
+    }
+  },
+  "main_thread_id": 69,
+  "current_thread_id": null,
+  "cli_arguments": {
+    "object_id": 4,
+    "type": "Array"
+  },
+  "scheduler": {
+    "next_thread_id": 1,
+    "next_pipe_id": 0,
+    "ready_queue": [],
+    "blocked_queue": [
+      {
+        "thread_id": 69,
+        "wake_time_rem": 4532
+      }
+    ]
+  }
+}

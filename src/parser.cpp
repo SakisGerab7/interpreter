@@ -44,6 +44,7 @@ std::shared_ptr<std::vector<StmtPtr>> Parser::parse() {
 // declaration → var_declaration | func_declaration | struct_declaration | statement ;
 StmtPtr Parser::declaration() {
     if (match(TokenType::Let)) return var_declaration();
+    if (match(TokenType::Const)) return const_declaration();
     if (match(TokenType::Function)) return func_declaration();
     if (match(TokenType::Struct)) return struct_declaration();
     return statement();
@@ -58,9 +59,20 @@ StmtPtr Parser::var_declaration() {
     if (match(TokenType::Assign)) {
         initializer = expression();
     }
-    
+
     consume(TokenType::Semicolon, "Expect ';' after variable declaration.");
     return make_stmt<LetStmt>(name, std::move(initializer));
+}
+
+// const_declaration → "const" IDENTIFIER "=" expression ";" ;
+StmtPtr Parser::const_declaration() {
+    auto name = consume(TokenType::Identifier, "Expect constant name.");
+
+    consume(TokenType::Assign, "Expect '=' after constant name.");
+    ExprPtr initializer = expression();
+
+    consume(TokenType::Semicolon, "Expect ';' after constant declaration.");
+    return make_stmt<ConstStmt>(name, std::move(initializer));
 }
 
 // parameters → IDENTIFIER ( "," IDENTIFIER )* ;
@@ -143,7 +155,7 @@ StmtPtr Parser::if_statement() {
     consume(TokenType::LeftCurly, "Expect '{' after expresion.");
     StmtPtr then_branch = block();
     StmtPtr else_branch = nullptr;
-    
+
     if (match(TokenType::Else)) {
         else_branch = statement();
     }
@@ -170,7 +182,7 @@ StmtPtr Parser::for_statement() {
     } else {
         initializer = expr_statement();
     }
-    
+
     ExprPtr condition = nullptr;
     if (!match(TokenType::Semicolon)) {
         condition = expression();
@@ -185,8 +197,8 @@ StmtPtr Parser::for_statement() {
 
     StmtPtr body = block();
 
-    return desugar_for(std::move(initializer), std::move(condition), std::move(step), std::move(body));
-    // return make_stmt<ForStmt>(std::move(initializer), std::move(condition), std::move(step), std::move(body));
+    // return desugar_for(std::move(initializer), std::move(condition), std::move(step), std::move(body));
+    return make_stmt<ForStmt>(std::move(initializer), std::move(condition), std::move(step), std::move(body));
 }
 
 // foreach_statement → "foreach" IDENTIFIER ("," IDENTIFIER)? "in" expression "{" block_statements "}" ;
@@ -381,7 +393,7 @@ ExprPtr Parser::ternary() {
             const auto &cond_lit = std::get<LiteralExpr>(*expr).literal;
 
             if (std::holds_alternative<LiteralExpr>(*right) &&
-                std::holds_alternative<LiteralExpr>(*left)) 
+                std::holds_alternative<LiteralExpr>(*left))
             {
                 const auto &right_lit = std::get<LiteralExpr>(*right).literal;
                 const auto &left_lit  = std::get<LiteralExpr>(*left).literal;
@@ -401,14 +413,14 @@ ExprPtr Parser::ternary() {
 // logic_or → logic_and ( "||" logic_and )* ;
 ExprPtr Parser::logic_or() {
     ExprPtr expr = logic_and();
-    
+
     while (match(TokenType::Or)) {
         Token op = previous();
         ExprPtr right = logic_and();
 
         // Constant folding for logical operators on literals
         if (std::holds_alternative<LiteralExpr>(*expr) &&
-            std::holds_alternative<LiteralExpr>(*right)) 
+            std::holds_alternative<LiteralExpr>(*right))
         {
             const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
             const auto &right_lit = std::get<LiteralExpr>(*right).literal;
@@ -428,14 +440,14 @@ ExprPtr Parser::logic_or() {
 // logic_and → bit_or ( "&&" bit_or )* ;
 ExprPtr Parser::logic_and() {
     ExprPtr expr = bit_or();
-    
+
     while (match(TokenType::And)) {
         Token op = previous();
         ExprPtr right = equality();
 
         // Constant folding for logical operators on literals
         if (std::holds_alternative<LiteralExpr>(*expr) &&
-            std::holds_alternative<LiteralExpr>(*right)) 
+            std::holds_alternative<LiteralExpr>(*right))
         {
             const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
             const auto &right_lit = std::get<LiteralExpr>(*right).literal;
@@ -455,14 +467,14 @@ ExprPtr Parser::logic_and() {
 // bit_or → bit_xor ( "|" bit_xor )* ;
 ExprPtr Parser::bit_or() {
     ExprPtr expr = bit_xor();
-    
+
     while (match(TokenType::BitOr)) {
         Token op = previous();
         ExprPtr right = equality();
 
         // Constant folding for binary operators on literals
         if (std::holds_alternative<LiteralExpr>(*expr) &&
-            std::holds_alternative<LiteralExpr>(*right)) 
+            std::holds_alternative<LiteralExpr>(*right))
         {
             const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
             const auto &right_lit = std::get<LiteralExpr>(*right).literal;
@@ -482,14 +494,14 @@ ExprPtr Parser::bit_or() {
 // bit_xor → bit_and ( "^" bit_and )* ;
 ExprPtr Parser::bit_xor() {
     ExprPtr expr = bit_and();
-    
+
     while (match(TokenType::BitXor)) {
         Token op = previous();
         ExprPtr right = equality();
 
         // Constant folding for binary operators on literals
         if (std::holds_alternative<LiteralExpr>(*expr) &&
-            std::holds_alternative<LiteralExpr>(*right)) 
+            std::holds_alternative<LiteralExpr>(*right))
         {
             const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
             const auto &right_lit = std::get<LiteralExpr>(*right).literal;
@@ -509,14 +521,14 @@ ExprPtr Parser::bit_xor() {
 // bit_and → equality ( "&" equality )* ;
 ExprPtr Parser::bit_and() {
     ExprPtr expr = equality();
-    
+
     while (match(TokenType::BitAnd)) {
         Token op = previous();
         ExprPtr right = equality();
 
         // Constant folding for binary operators on literals
         if (std::holds_alternative<LiteralExpr>(*expr) &&
-            std::holds_alternative<LiteralExpr>(*right)) 
+            std::holds_alternative<LiteralExpr>(*right))
         {
             const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
             const auto &right_lit = std::get<LiteralExpr>(*right).literal;
@@ -536,14 +548,14 @@ ExprPtr Parser::bit_and() {
 // equality → comparison ( ( "==" | "!=" ) comparison )* ;
 ExprPtr Parser::equality() {
     ExprPtr expr = comparison();
-    
+
     while (match(TokenType::Equal, TokenType::NotEqual)) {
         Token op = previous();
         ExprPtr right = comparison();
 
         // Constant folding for binary operators on literals
         if (std::holds_alternative<LiteralExpr>(*expr) &&
-            std::holds_alternative<LiteralExpr>(*right)) 
+            std::holds_alternative<LiteralExpr>(*right))
         {
             const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
             const auto &right_lit = std::get<LiteralExpr>(*right).literal;
@@ -571,7 +583,7 @@ ExprPtr Parser::comparison() {
 
         // Constant folding for binary operators on literals
         if (std::holds_alternative<LiteralExpr>(*expr) &&
-            std::holds_alternative<LiteralExpr>(*right)) 
+            std::holds_alternative<LiteralExpr>(*right))
         {
             const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
             const auto &right_lit = std::get<LiteralExpr>(*right).literal;
@@ -594,14 +606,14 @@ ExprPtr Parser::comparison() {
 // bit_shift → term ( ( "<<" | ">>" ) term )* ;
 ExprPtr Parser::bit_shift() {
     ExprPtr expr = term();
-    
+
     while (match(TokenType::BitShiftLeft, TokenType::BitShiftRight)) {
         Token op = previous();
         ExprPtr right = comparison();
 
         // Constant folding for binary operators on literals
         if (std::holds_alternative<LiteralExpr>(*expr) &&
-            std::holds_alternative<LiteralExpr>(*right)) 
+            std::holds_alternative<LiteralExpr>(*right))
         {
             const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
             const auto &right_lit = std::get<LiteralExpr>(*right).literal;
@@ -622,14 +634,14 @@ ExprPtr Parser::bit_shift() {
 // term → factor ( ( "+" | "-" ) factor )* ;
 ExprPtr Parser::term() {
     ExprPtr expr = factor();
-    
+
     while (match(TokenType::Plus, TokenType::Minus)) {
         Token op = previous();
         ExprPtr right = factor();
 
         // Constant folding for binary operators on literals
         if (std::holds_alternative<LiteralExpr>(*expr) &&
-            std::holds_alternative<LiteralExpr>(*right)) 
+            std::holds_alternative<LiteralExpr>(*right))
         {
             const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
             const auto &right_lit = std::get<LiteralExpr>(*right).literal;
@@ -650,14 +662,14 @@ ExprPtr Parser::term() {
 // factor → unary ( ( "*" | "/" | "%" ) unary )* ;
 ExprPtr Parser::factor() {
     ExprPtr expr = unary();
-    
+
     while (match(TokenType::Mult, TokenType::Div, TokenType::Mod)) {
         Token op = previous();
         ExprPtr right = unary();
 
         // Constant folding for binary operators on literals
         if (std::holds_alternative<LiteralExpr>(*expr) &&
-            std::holds_alternative<LiteralExpr>(*right)) 
+            std::holds_alternative<LiteralExpr>(*right))
         {
             const auto &left_lit  = std::get<LiteralExpr>(*expr).literal;
             const auto &right_lit = std::get<LiteralExpr>(*right).literal;
@@ -716,11 +728,11 @@ ExprPtr Parser::call() {
                     if (args.size() >= 255) {
                         throw ParseError(peek(), "Can't have more than 255 arguments.");
                     }
-    
+
                     args.push_back(expression());
                 } while (match(TokenType::Comma));
             }
-    
+
             consume(TokenType::RightParen, "Expect ')' after arguments.");
             expr = make_expr<CallExpr>(std::move(expr), std::move(args));
         } else if (match(TokenType::LeftBracket)) {
@@ -791,7 +803,7 @@ ExprPtr Parser::primary() {
 
         consume(TokenType::LeftCurly, "Expect '{' after 'spawn'");
         auto stmts = block_statements();
-        
+
         return make_expr<SpawnExpr>(std::move(expr), stmts);
     }
 
@@ -822,7 +834,7 @@ ExprPtr Parser::array_literal() {
     }
 
     consume(TokenType::RightBracket, "Expect ']' after array elements.");
-    
+
     // Constant folding for array literals with all literal elements
     // if (all_literals) {
     //     std::vector<Value> values;
@@ -834,7 +846,7 @@ ExprPtr Parser::array_literal() {
     //     auto array_ptr = std::make_shared<Array>(values);
     //     return make_expr<LiteralExpr>(array_ptr);
     // }
-    
+
     return make_expr<ArrayExpr>(std::move(elements));
 }
 
@@ -849,48 +861,48 @@ ExprPtr Parser::object_literal() {
             if (match(TokenType::String, TokenType::Identifier)) {
                 key = previous().value;
             } else {
-                throw ParseError(peek(), "Expect string or identifier as object key.");
+                throw ParseError(peek(), "Expect string or identifier as record key.");
             }
 
-            consume(TokenType::Colon, "Expect ':' after key in object literal.");
+            consume(TokenType::Colon, "Expect ':' after key in record literal.");
 
             auto value = expression();
 
             // if (!std::holds_alternative<LiteralExpr>(*value)) {
             //     all_literals = false;
             // }
-            
+
             items[key] = std::move(value);
         } while (match(TokenType::Comma));
     }
 
-    consume(TokenType::RightCurly, "Expect '}' after object items.");
+    consume(TokenType::RightCurly, "Expect '}' after record items.");
 
-    // Constant folding for object literals with all literal values
+    // Constant folding for record literals with all literal values
     // if (all_literals) {
     //     std::unordered_map<std::string, Value> values;
     //     for (const auto &[key, expr] : items) {
     //         values[key] = std::get<LiteralExpr>(*expr).literal;
     //     }
-        
-    //     auto object_ptr = std::make_shared<Object>(values);
+
+    //     auto object_ptr = std::make_shared<Record>(values);
     //     return make_expr<LiteralExpr>(object_ptr);
     // }
 
-    return make_expr<ObjectExpr>(std::move(items));
+    return make_expr<RecordExpr>(std::move(items));
 }
 
 // lambda_expression → "fn" "(" parameters? ")" ( "->" expression | "{" block_statements "}" ) ;
-ExprPtr Parser::lambda_expression() {    
+ExprPtr Parser::lambda_expression() {
     consume(TokenType::LeftParen, "Expect '(' after 'fn' keyword.");
-    
+
     std::vector<Token> params = parameters();
 
     consume(TokenType::RightParen, "Expect ')' after parameters.");
-    
+
     if (match(TokenType::RightArrow)) {
         auto return_expr = expression();
-        
+
         auto body = std::make_shared<std::vector<StmtPtr>>();
         body->push_back(make_stmt<ReturnStmt>(std::move(return_expr)));
 

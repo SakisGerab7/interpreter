@@ -19,7 +19,7 @@ def lcg_next(x: int) -> int:
 
 
 def main() -> None:
-    n = 200
+    n = 256
     steps = 10
     dt = 0.01
     seed = 7
@@ -77,7 +77,7 @@ def main() -> None:
         checksum += b.x + b.y + b.z + b.vx + b.vy + b.vz
 
     print(f"sum={checksum}")
-    print(f"secs={elapsed}")
+    print(f"secs={elapsed:.4f} seconds")
 
 
 if __name__ == "__main__":

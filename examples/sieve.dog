@@ -36,7 +36,7 @@ fn sieve(n) {
 }
 
 let start = clock();
-disp "sieve result = " + sieve(100000);
+disp "sieve result = " + sieve(100);
 let end = clock();
 let t = end - start;
 disp "Execution Time: " + t + "s";

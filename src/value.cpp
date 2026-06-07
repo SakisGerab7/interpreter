@@ -1,7 +1,9 @@
 #include "value.hpp"
 #include "bytecode.hpp"
 #include "runtime.hpp"
-#include "threading.hpp"
+#include "pipe.hpp"
+#include "io_handler.hpp"
+#include "vm.hpp"
 
 inline std::string Array::to_string() const {
     std::stringstream ss;
@@ -15,7 +17,7 @@ inline std::string Array::to_string() const {
     return ss.str();
 }
 
-inline std::string Object::to_string() const {
+inline std::string Record::to_string() const {
     std::stringstream ss;
     ss << "{";
     size_t count = 0;
@@ -24,137 +26,289 @@ inline std::string Object::to_string() const {
         if (count < items.size() - 1) ss << ", ";
         count++;
     }
-    
+
     ss << "}";
     return ss.str();
 }
 
-Value Value::get_index(const Value &idx) const {
-    if (is_array() && idx.is_int()) {
+inline std::string ByteArray::to_string() const {
+    std::stringstream ss;
+    ss << "0x";
+    for (uint8_t byte : data) {
+        ss << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(byte);
+    }
+    return ss.str();
+}
+
+bool Value::is_function()        const { return is_object() && as_object()->is_function();        }
+bool Value::is_native()          const { return is_object() && as_object()->is_native();          }
+bool Value::is_closure()         const { return is_object() && as_object()->is_closure();         }
+bool Value::is_method_closure()  const { return is_object() && as_object()->is_method_closure();  }
+bool Value::is_upvalue()         const { return is_object() && as_object()->is_upvalue();         }
+bool Value::is_array()           const { return is_object() && as_object()->is_array();           }
+bool Value::is_record()          const { return is_object() && as_object()->is_record();          }
+bool Value::is_byte_array()      const { return is_object() && as_object()->is_byte_array();      }
+bool Value::is_struct()          const { return is_object() && as_object()->is_struct();          }
+bool Value::is_struct_instance() const { return is_object() && as_object()->is_struct_instance(); }
+bool Value::is_thread()          const { return is_object() && as_object()->is_thread();          }
+bool Value::is_io_handle()       const { return is_object() && as_object()->is_io_handle();       }
+bool Value::is_pipe()            const { return is_object() && as_object()->is_pipe();            }
+
+int Value::as_int() const {
+    if (is_int()) return std::get<int>(data);
+    if (is_float()) return static_cast<int>(std::get<double>(data));
+    throw std::runtime_error("Value is not an int");
+}
+
+double Value::as_float() const {
+    if (is_float()) return std::get<double>(data);
+    if (is_int()) return static_cast<double>(std::get<int>(data));
+    throw std::runtime_error("Value is not a float");
+}
+
+bool Value::as_bool() const {
+    if (is_bool()) return std::get<bool>(data);
+    throw std::runtime_error("Value is not a bool");
+}
+
+const std::string& Value::as_string() const {
+    if (is_string()) return std::get<std::string>(data);
+    throw std::runtime_error("Value is not a string");
+}
+
+Object* Value::as_object() const {
+    if (is_object()) return std::get<Object*>(data);
+    throw std::runtime_error("Value is not an object");
+}
+
+Function* Value::as_function() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_function()) return obj->as_function();
+    }
+    throw std::runtime_error("Value is not a function");
+}
+
+Native* Value::as_native() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_native()) return obj->as_native();
+    }
+    throw std::runtime_error("Value is not a native function");
+}
+
+Closure* Value::as_closure() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_closure()) return obj->as_closure();
+    }
+    throw std::runtime_error("Value is not a closure");
+}
+
+MethodClosure* Value::as_method_closure() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_method_closure()) return obj->as_method_closure();
+    }
+    throw std::runtime_error("Value is not a method closure");
+}
+
+Upvalue* Value::as_upvalue() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_upvalue()) return obj->as_upvalue();
+    }
+    throw std::runtime_error("Value is not an upvalue");
+}
+
+Array* Value::as_array() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_array()) return obj->as_array();
+    }
+    throw std::runtime_error("Value is not an array");
+}
+
+Record* Value::as_record() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_record()) return obj->as_record();
+    }
+    throw std::runtime_error("Value is not a record");
+}
+
+ByteArray* Value::as_byte_array() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_byte_array()) return obj->as_byte_array();
+    }
+    throw std::runtime_error("Value is not a byte array");
+}
+
+Struct* Value::as_struct() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_struct()) return obj->as_struct();
+    }
+    throw std::runtime_error("Value is not a struct");
+}
+
+StructInstance* Value::as_struct_instance() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_struct_instance()) return obj->as_struct_instance();
+    }
+    throw std::runtime_error("Value is not a struct instance");
+}
+
+GreenThread* Value::as_thread() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_thread()) return obj->as_thread();
+    }
+    throw std::runtime_error("Value is not a thread");
+}
+
+IOHandle* Value::as_io_handle() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_io_handle()) return obj->as_io_handle();
+    }
+    throw std::runtime_error("Value is not an I/O handle");
+}
+
+Pipe* Value::as_pipe() const {
+    if (is_object()) {
+        Object* obj = std::get<Object*>(data);
+        if (obj->is_pipe()) return obj->as_pipe();
+    }
+    throw std::runtime_error("Value is not a pipe");
+}
+
+Value Value::get_index(const Value &idx) {
+    if (idx.is_int()) {
         int i = idx.as_int();
-        if (i < 0) 
+        if (i < 0)
             throw std::runtime_error("Negative index access not supported");
 
-        const Array &arr = *std::any_cast<Array::Ptr>(data);
+        if (is_array()) {
+            Array* arr = as_array();
 
-        if (static_cast<size_t>(i) >= arr.size())
-            throw std::runtime_error("Array index out of bounds");
+            if (static_cast<size_t>(i) >= arr->size())
+                throw std::runtime_error("Array index out of bounds");
 
-        return arr[static_cast<size_t>(i)];
+            return (*arr)[static_cast<size_t>(i)];
+        }
+
+        if (is_string()) {
+            const std::string &str = std::get<std::string>(data);
+
+            if (static_cast<size_t>(i) >= str.size())
+                throw std::runtime_error("String index out of bounds");
+
+            return std::string(1, str[i]);
+        }
     }
-    
+
     if (idx.is_string()) {
         std::string k = idx.as_string();
-        if (is_object()) {
-            const Object &obj = *std::any_cast<Object::Ptr>(data);
-            auto it = obj.find(k);
-            if (it == obj.end())
-                throw std::runtime_error("Key '" + k + "' not found in object");
+
+        if (is_record()) {
+            Record* record = as_record();
+            auto it = record->find(k);
+            if (it == record->end())
+                throw std::runtime_error("Key '" + k + "' not found in record");
 
             return it->second;
         }
 
         if (is_struct_instance()) {
-            auto &instance = *std::any_cast<StructInstance::Ptr>(data);
-            return instance.get(k);
+            StructInstance* instance = as_struct_instance();
+            return instance->get(k);
         }
 
-        throw std::runtime_error("Cannot access with string key: container type=" 
+        throw std::runtime_error("Cannot access with string key: container type="
                                  + type_name() + ", key=" + k);
-    } 
-    
-    throw std::runtime_error("Invalid index access: container type=" 
+    }
+
+    throw std::runtime_error("Invalid index access: container type="
                              + type_name() + ", index type=" + idx.type_name());
 }
 
 void Value::set_index(const Value &idx, const Value &val) {
-    if (is_array() && idx.is_int()) {
+    if (idx.is_int()) {
         int i = idx.as_int();
-        if (i < 0) 
+        if (i < 0)
             throw std::runtime_error("Negative index assignment not supported");
 
-        Array &arr = *std::any_cast<Array::Ptr>(data);
-        arr[static_cast<size_t>(i)] = val;
-        return;
-    }
-    
-    if (idx.is_string()) {
-        std::string k = idx.as_string();
-        if (is_object()) {
-            Object &obj = *std::any_cast<Object::Ptr>(data);
-            obj[k] = val;
-        } else if (is_struct_instance()) {
-            auto &instance = *std::any_cast<StructInstance::Ptr>(data);
-            instance.put(k, val);
-        } else {
-            throw std::runtime_error("Cannot assign with string key: container type=" 
-                                     + type_name() + ", key=" + k);
+        if (is_array()) {
+            Array* arr = as_array();
+            (*arr)[static_cast<size_t>(i)] = val;
+            return;
         }
 
-        return;
-    } 
+        if (is_string()) {
+            throw std::runtime_error("Strings are immutable, cannot assign to index");
+        }
+    }
 
-    throw std::runtime_error("Invalid index assignment: container type=" 
+    if (idx.is_string()) {
+        std::string k = idx.as_string();
+        if (is_record()) {
+            Record* record = as_record();
+            (*record)[k] = val;
+            return;
+        }
+
+        if (is_struct_instance()) {
+            StructInstance* instance = as_struct_instance();
+            instance->put(k, val);
+            return;
+        }
+
+        throw std::runtime_error("Cannot assign with string key: container type=" + type_name() + ", key=" + k);
+
+        return;
+    }
+
+    throw std::runtime_error("Invalid index assignment: container type="
                              + type_name() + ", index type=" + idx.type_name());
 }
 
 std::string Value::type_name() const {
-    if (is_null()) return "null";
-    if (is_bool()) return "bool";
-    if (is_int()) return "int";
-    if (is_float()) return "float";
-    if (is_string()) return "string";
-    if (is_function()) return "function";
-    if (is_native()) return "native function";
-    if (is_closure()) return "closure";
-    if (is_array()) return "array";
-    if (is_object()) return "object";
-    if (is_struct()) return "struct";
-    if (is_struct_instance()) return "struct instance";
-    if (is_thread()) return "thread";
-    if (is_pipe())   return "pipe";
-    if (is_upvalue()) return "upvalue";
-    return "unknown";
+    switch (data.index()) {
+        case 0: return "null";
+        case 1: return "int";
+        case 2: return "float";
+        case 3: return "bool";
+        case 4: return "string";
+        case 5: return as_object()->type_name();
+        default: return "unknown";
+    }
 }
 
 std::string Value::to_string() const {
-    if (is_int())      return std::to_string(as_int());
-    if (is_float())    return std::to_string(as_float());
-    if (is_bool())     return as_bool() ? "true" : "false";
-    if (is_string())   return as_string();
-    if (is_function()) return as_function()->to_string();
-    if (is_native())   return as_native()->to_string();
-    if (is_closure())  return as_closure()->to_string();
-    if (is_array())    return as_array()->to_string();
-    if (is_object())   return as_object()->to_string();
-    if (is_struct())   return as_struct()->to_string();
-    if (is_struct_instance()) return as_struct_instance()->to_string();
-    if (is_thread()) return "thread " + std::to_string(as_thread()->ID);
-    if (is_pipe())   return "pipe " + std::to_string(as_pipe()->ID);
-    if (is_upvalue()) return as_upvalue()->get().to_string();
-    return "null";
+    switch (data.index()) {
+        case 0: return "null";
+        case 1: return std::to_string(as_int());
+        case 2: return std::to_string(as_float());
+        case 3: return as_bool() ? "true" : "false";
+        case 4: return as_string();
+        case 5: return as_object()->to_string();
+        default: return "unknown";
+    }
 }
 
 bool Value::is_truthy() const {
-    if (is_null())     return false;
-    if (is_int())      return as_int() != 0;
-    if (is_float())    return as_float() != 0;
-    if (is_bool())     return as_bool();
-    if (is_string())   return !as_string().empty();
-    if (is_function()) return true;
-    if (is_native())   return true;
-    if (is_closure())  return true;
-    if (is_array())    return !as_array()->empty();
-    if (is_object())   return !as_object()->empty();
-    if (is_struct())   return true;
-    if (is_struct_instance()) return true;
-    if (is_thread()) return true;
-    if (is_pipe()) {
-        auto pipe = as_pipe();
-        return pipe && (!pipe->buffer.empty() || !pipe->closed);
+    switch (data.index()) {
+        case 0: return false; // null
+        case 1: return as_int() != 0;
+        case 2: return as_float() != 0;
+        case 3: return as_bool();
+        case 4: return !as_string().empty();
+        case 5: return as_object()->is_truthy();
+        default: return false;
     }
-    if (is_upvalue())         return as_upvalue()->get().is_truthy();
-    return false;
 }
 
 Value operator+(const Value &lhs, const Value &rhs) {
@@ -164,15 +318,6 @@ Value operator+(const Value &lhs, const Value &rhs) {
         return lhs.as_float() + rhs.as_float();
     if (lhs.is_string() || rhs.is_string())
         return lhs.to_string() + rhs.to_string();
-    if (lhs.is_array() && rhs.is_array()) {
-        const auto &arr1 = lhs.as_array();
-        const auto &arr2 = rhs.as_array();
-        std::vector<Value> combined;
-        combined.reserve(arr1->size() + arr2->size());
-        combined.insert(combined.end(), arr1->begin(), arr1->end());
-        combined.insert(combined.end(), arr2->begin(), arr2->end());
-        return std::make_shared<Array>(combined);
-    }
 
     throw std::runtime_error("Unsupported types for '+'");
 }
@@ -182,7 +327,7 @@ Value operator-(const Value &lhs, const Value &rhs) {
         return lhs.as_int() - rhs.as_int();
     if ((lhs.is_int() || lhs.is_float()) && (rhs.is_int() || rhs.is_float()))
         return lhs.as_float() - rhs.as_float();
-        
+
     throw std::runtime_error("Unsupported types for '-'");
 }
 
@@ -191,20 +336,6 @@ Value operator*(const Value &lhs, const Value &rhs) {
         return lhs.as_int() * rhs.as_int();
     if ((lhs.is_int() || lhs.is_float()) && (rhs.is_int() || rhs.is_float()))
         return lhs.as_float() * rhs.as_float();
-    if ((lhs.is_array() && rhs.is_int()) || (lhs.is_int() && rhs.is_array())) { 
-        const Value &arr_val = lhs.is_array() ? lhs : rhs;
-        const Value &int_val = lhs.is_int() ? lhs : rhs;
-        const auto &arr = arr_val.as_array();
-        int times = int_val.as_int();
-        if (times < 0) throw std::runtime_error("Cannot multiply array by negative integer");
-
-        std::vector<Value> result;
-        result.reserve(arr->size() * times);
-        for (int i = 0; i < times; ++i) {
-            result.insert(result.end(), arr->begin(), arr->end());
-        }
-        return std::make_shared<Array>(result);
-    }
     if ((lhs.is_string() && rhs.is_int()) || (lhs.is_int() && rhs.is_string())) {
         const Value &str_val = lhs.is_string() ? lhs : rhs;
         const Value &int_val = lhs.is_int() ? lhs : rhs;
@@ -267,24 +398,19 @@ bool operator==(const Value &lhs, const Value &rhs) {
     if (lhs.is_string() && rhs.is_string())
         return lhs.as_string() == rhs.as_string();
 
-    if (lhs.is_function() && rhs.is_function())
-        return lhs.as_function() == rhs.as_function();
-    
-    if (lhs.is_native() && rhs.is_native())
-        return lhs.as_native() == rhs.as_native();
-
-    if (lhs.is_closure() && rhs.is_closure())
-        return lhs.as_closure() == rhs.as_closure();
-
     if (lhs.is_array() && rhs.is_array()) {
-        const auto &a1 = lhs.as_array();
-        const auto &a2 = rhs.as_array();
+        Array* a1 = lhs.as_array();
+        Array* a2 = rhs.as_array();
         if (a1->size() != a2->size()) return false;
         for (size_t i = 0; i < a1->size(); ++i) {
-            if (!((*a1)[i] == (*a2)[i])) return false;
+            if ((*a1)[i] != (*a2)[i]) return false;
         }
-
         return true;
+    }
+    if (lhs.is_object() && rhs.is_object()) {
+        Object* obj1 = lhs.as_object();
+        Object* obj2 = rhs.as_object();
+        return obj1 == obj2; // compare pointers for non-array objects
     }
 
     return false;

@@ -1,13 +1,29 @@
-let listener = socket_listen("0.0.0.0", 8080);
 
-// Accept returns a new socket for each connection
+fn handleConnection(conn) {
+    let request = conn.read_line();
+    if (request == null) {
+        disp "connection closed by client";
+        return;
+    }
+
+    request = request.str().trim();
+
+    disp "request from client: " + request;
+    conn.write("ACK for `" + request + "`\n");
+    conn.close_();
+}
+
+let listener = listen("tcp", {
+    port: 8080
+});
+
+disp "new listener " + listener;
+
 while true {
-    let client = <-listener; // blocks until new connection
-    
+    let conn = listener.accept();
+    disp "new connection " + conn;
+
     spawn {
-        // Handle client in separate thread
-        let request = <-client;
-        client <- "HTTP/1.1 200 OK\r\n\r\nHello!\n";
-        close client;
+        handleConnection(conn);
     };
 }

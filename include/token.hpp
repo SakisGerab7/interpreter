@@ -59,6 +59,7 @@ enum class TokenType {
 
     // Keyword tokens
     Let,
+    Const,
     Struct,
     Function,
     True,

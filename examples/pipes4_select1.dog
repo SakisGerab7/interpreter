@@ -1,5 +1,5 @@
 fn producer(interval) {
-    let p = pipe(-1);
+    let p = pipe(0);
 
     spawn {
         for let i = 0; i < 10; i++ {

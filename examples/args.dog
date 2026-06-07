@@ -1,0 +1,8 @@
+let args = cli_args();
+
+disp args;
+
+let name = args[1];
+let age = args[2];
+
+disp "My name is " + name + " and i am " + age + " years old!";

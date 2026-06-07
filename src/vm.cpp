@@ -1,6 +1,9 @@
 #include "vm.hpp"
 #include "bytecode.hpp"
 #include "native_functions.hpp"
+#include "runtime.hpp"
+#include "value.hpp"
+#include <cstdint>
 
 #define PROFILING_ENABLED false
 
@@ -21,8 +24,17 @@ struct OpTimer {
     }
 };
 
-VM::VM() : scheduler(*this) {
+VM::VM(const std::vector<std::string> &args, Heap* heap_ptr) : scheduler(*this), heap(heap_ptr) {
+    std::vector<Value> arg_values;
+    for (const auto &arg : args) {
+        arg_values.push_back(arg);
+    }
+
+    cli_arguments = heap->allocate<Array>(arg_values);
+
     // define native functions here if needed
+    define_native("cli_args", 0, native_functions::cli_args);
+
     define_native("clock", 0, native_functions::clock);
     define_native("len",   1, native_functions::len);
     define_native("str",   1, native_functions::str);
@@ -34,6 +46,9 @@ VM::VM() : scheduler(*this) {
     define_native("String.lower", 0, native_functions::string::to_lower);
     define_native("String.trim",  0, native_functions::string::trim);
     define_native("String.split", 1, native_functions::string::split);
+    define_native("String.bytes", 0, native_functions::string::to_byte_array);
+
+    define_native("ByteArray.str", 0, native_functions::byte_array::to_string);
 
     define_native("arange", 3, native_functions::array::arange);
     define_native("Array.push",    1, native_functions::array::push);
@@ -42,6 +57,9 @@ VM::VM() : scheduler(*this) {
     define_native("Array.unshift", 1, native_functions::array::unshift);
     define_native("Array.slice",   2, native_functions::array::slice);
     define_native("Array.sum",     0, native_functions::array::sum);
+
+    define_native("Array.for_each", 1, native_functions::array::foreach);
+    define_native("Array.map",      1, native_functions::array::map);
 
     globals["pi"] = M_PI;
     define_native("pow",     2, native_functions::math::pow);
@@ -70,27 +88,41 @@ VM::VM() : scheduler(*this) {
     define_native("thread_id", 0, native_functions::thread_id);
 
     define_native("Thread.join", 0, native_functions::join);
-    // define_native("Thread.detach", 0, native_functions::detach);
+    define_native("Thread.detach", 0, native_functions::detach);
 
     define_native("pipe", 1, native_functions::pipe);
+
+    // I/O related globals
+    globals["stdin"] = scheduler.stdin_handle();
+    globals["stdout"] = heap->allocate<IOHandle>();
+    globals["stderr"] = heap->allocate<IOHandle>();
+
+    // I/O related natives
+    define_native("listen",  2, native_functions::listen);
+    define_native("connect", 2, native_functions::connect);
+    define_native("open",    2, native_functions::open);
+
+    define_native("IOHandle.read", 1, native_functions::io::read);
+    define_native("IOHandle.read_until_delimiter", 1, native_functions::io::read_until_delimiter);
+    define_native("IOHandle.read_line", 0, native_functions::io::read_line);
+    define_native("IOHandle.read_all", 0, native_functions::io::read_all);
+    define_native("IOHandle.write", 1, native_functions::io::write);
+    define_native("IOHandle.accept", 0, native_functions::io::accept);
+    define_native("IOHandle.close_", 0, native_functions::io::close);
+
+    define_native("pack",   2, native_functions::pack);
+    define_native("unpack", 2, native_functions::unpack);
 }
 
-void VM::spawn_thread(Closure::Ptr closure, size_t thread_count) {
+void VM::spawn_thread(Closure* closure, size_t thread_count) {
     std::vector<Value> handles;
     for (size_t i = 0; i < thread_count; ++i) {
-        auto new_thread = std::make_shared<GreenThread>(scheduler.next_thread_id++);
-        new_thread->stack[new_thread->stack_size++] = Value(closure);
+        GreenThread* new_thread = heap->allocate<GreenThread>(scheduler.next_thread_id++, closure);
 
-        CallFrame frame;
-        frame.closure = closure;
-        frame.ip = 0;
-        frame.base = static_cast<int>(new_thread->stack_size) - 1;
-        new_thread->frames.push_back(frame);
-
-        scheduler.add_thread(new_thread);
         scheduler.enqueue(new_thread);
 
         if (current_thread) {
+            new_thread->parent = current_thread;
             current_thread->children.push_back(new_thread);
         }
 
@@ -98,14 +130,24 @@ void VM::spawn_thread(Closure::Ptr closure, size_t thread_count) {
     }
 
     if (current_thread) {
-        push((thread_count == 1) ? handles[0] : std::make_shared<Array>(handles));
+        push((thread_count == 1) ? handles[0] : heap->allocate<Array>(handles));
+    } else {
+        // If this is the first thread, set it as the main thread
+        main_thread = handles[0].as_thread();
     }
 }
 
-Value VM::interpret(Function::Ptr func) {
-    auto closure = std::make_shared<Closure>(func);
+Value VM::interpret(Function* func) {
+    Closure* closure = heap->allocate<Closure>(func);
     spawn_thread(closure, 1);
+
+    std::cerr << "Starting VM with main thread ID " << main_thread->ID << " (state: " << main_thread->state << ")\n";
+
+    heap->active_vm = this; // set active VM for GC
+
     Value result = scheduler.schedule();
+
+    std::cerr << "VM execution finished. Result: " << result.to_string() << "\n";
 
 #if PROFILING_ENABLED
     dump_profile();
@@ -115,37 +157,63 @@ Value VM::interpret(Function::Ptr func) {
     return result;
 }
 
-inline void VM::define_native(const std::string &name, int arity, NativeFn func) {
-    globals[name] = std::make_shared<Native>(name, arity, func);
+void VM::define_native(const std::string &name, int arity, NativeFn func) {
+    globals[name] = heap->allocate<Native>(name, arity, func);
 }
+
+void VM::bind_native_method(const Value &obj, const std::string &method_name) {
+    auto method_it = globals.find(method_name);
+    if (method_it == globals.end()) {
+        throw std::runtime_error("Undefined method '" + method_name + "'");
+    }
+
+    auto method = method_it->second.as_native();
+    method->bound_instance = obj;
+    push(method);
+}
+
 
 void VM::call_value(const Value &callee, int arg_count) {
     if (callee.is_closure()) {
         call(callee.as_closure(), arg_count);
-    } else if (callee.is_function()) {
+        return;
+    }
+    if (callee.is_function()) {
         auto func = callee.as_function();
-        auto closure = std::make_shared<Closure>(func);
+        auto closure = heap->allocate<Closure>(func);
         call(closure, arg_count);
-    } else if (callee.is_native()) {
+        return;
+    }
+    if (callee.is_method_closure()) {
+        auto closure = callee.as_method_closure();
+        poke(closure->self, arg_count); // set 'self' as the first argument
+        call(closure->closure, arg_count);
+        return;
+    }
+    if (callee.is_native()) {
         call_native(callee.as_native(), arg_count);
-    } else if (callee.is_struct()) {
+        return;
+    }
+    if (callee.is_struct()) {
         // Creating a new instance of the struct
         auto strct = callee.as_struct();
-        current_thread->stack[current_thread->stack_size - arg_count - 1] = std::make_shared<StructInstance>(strct);
+        poke(heap->allocate<StructInstance>(strct), arg_count);
 
         auto it = strct->methods.find("init");
         if (it != strct->methods.end()) {
             auto init_method = it->second;
             call_value(init_method, arg_count);
+            return;
         } else if (arg_count != 0) {
             throw std::runtime_error("Struct constructor does not take arguments");
         }
-    } else {
-        throw std::runtime_error("Can only call functions and closures");
+        return;
     }
+
+    throw std::runtime_error("Value is not callable");
 }
 
-void VM::call_native(const Native::Ptr &native, int arg_count) {
+void VM::call_native(Native* native, int arg_count) {
     if (arg_count != native->arity) {
         throw std::runtime_error("Expected " + std::to_string(native->arity) +
                                  " arguments but got " + std::to_string(arg_count));
@@ -162,93 +230,105 @@ void VM::call_native(const Native::Ptr &native, int arg_count) {
         args.push_back(peek(i));
     }
 
-    Value result = native->func(*this, args);
     for (int i = 0; i < arg_count; i++) {
         pop();
     }
-
     pop(); // pop the native function itself
+
+    Value result = native->func(*this, args);
     push(result);
 }
 
-void VM::call(const Closure::Ptr &closure, int arg_count) {
+void VM::call(Closure* closure, int arg_count) {
     if (arg_count != closure->func->arity) {
         throw std::runtime_error("Expected " + std::to_string(closure->func->arity) +
                                  " arguments but got " + std::to_string(arg_count));
     }
 
-    if (current_thread->frames.size() >= 256) {
+    if (current_thread->ctx.frames.size() >= 256) {
         throw std::runtime_error("Stack overflow");
     }
 
-    if (!closure->recv_self.is_null()) {
-        // If this is a method call, set the first argument to recv_self
-        current_thread->stack[current_thread->stack_size - arg_count - 1] = closure->recv_self;
-        closure->recv_self = {}; // clear after use
-    }
-
-    CallFrame frame;
-    frame.closure = closure;
-    frame.ip = 0;
-    frame.base = static_cast<int>(current_thread->stack_size - arg_count - 1);
-    current_thread->frames.push_back(frame);
+    current_thread->ctx.frames.emplace_back(closure, 0, static_cast<int>(current_thread->ctx.stack_size - arg_count - 1));
 }
 
-inline Upvalue::Ptr VM::capture_upvalue(Value *local) {
+Value Upvalue::get() const {
+    if (owner_thread && slot_index >= 0) {
+        return owner_thread->ctx.stack[static_cast<size_t>(slot_index)];
+    }
+
+    return closed;
+}
+
+void Upvalue::set(const Value &v) {
+    if (owner_thread && slot_index >= 0) {
+        owner_thread->ctx.stack[static_cast<size_t>(slot_index)] = v;
+        return;
+    }
+
+    closed = v;
+}
+
+Upvalue* VM::capture_upvalue(int slot_index) {
     // Check if we already have an open upvalue pointing to this stack slot.
-    for (auto &uv : current_thread->open_upvalues) {
-        if (uv->location != nullptr && uv->location == local)
+    for (auto &uv : current_thread->ctx.open_upvalues) {
+        if (uv->owner_thread == current_thread && uv->slot_index == slot_index)
             return uv;
     }
 
     // Otherwise create a new upvalue for this local
-    auto up = std::make_shared<Upvalue>(local);
-    current_thread->open_upvalues.push_back(up);
+    auto up = heap->allocate<Upvalue>(current_thread, slot_index);
+    current_thread->ctx.open_upvalues.push_back(up);
     return up;
 }
 
-inline void VM::close_upvalues(int last) {
-    for (auto it = current_thread->open_upvalues.begin(); it != current_thread->open_upvalues.end(); ) {
+void VM::close_upvalues(int last) {
+    for (auto it = current_thread->ctx.open_upvalues.begin(); it != current_thread->ctx.open_upvalues.end(); ) {
         auto upvalue = *it;
-        if (upvalue->location != nullptr && upvalue->location >= &current_thread->stack[last]) {
+        if (upvalue->owner_thread == current_thread && upvalue->slot_index >= last) {
             // Move the value from the stack to the upvalue's closed field
-            upvalue->closed = *(upvalue->location);
-            upvalue->location = nullptr; // now points to closed value
-            it = current_thread->open_upvalues.erase(it);
+            upvalue->closed = current_thread->ctx.stack[static_cast<size_t>(upvalue->slot_index)];
+            upvalue->owner_thread = {};
+            upvalue->slot_index = -1;
+            it = current_thread->ctx.open_upvalues.erase(it);
         } else {
             ++it;
         }
     }
 }
 
-inline uint8_t VM::read_byte(CallFrame &frame) {
+uint8_t VM::read_byte(CallFrame &frame) {
     return frame.closure->func->chunk.code[frame.ip++];
 }
 
-inline uint16_t VM::read_short(CallFrame &frame) {
+uint16_t VM::read_short(CallFrame &frame) {
     uint16_t high = read_byte(frame);
     uint16_t low = read_byte(frame);
     return (high << 8) | low;
 }
 
-inline void VM::push(const Value& v) {
-    if (current_thread->stack_size >= current_thread->stack.size()) {
+void VM::push(const Value& v) {
+    if (current_thread->ctx.stack_size >= current_thread->ctx.stack.size()) {
         throw std::runtime_error("Stack overflow");
     }
 
-    current_thread->stack[current_thread->stack_size++] = v;
+    current_thread->ctx.stack[current_thread->ctx.stack_size++] = v;
 }
 
-inline Value VM::pop() {
-    if (current_thread->stack_size == 0) {
+const Value &VM::pop() const {
+    if (current_thread->ctx.stack_size == 0) {
         throw std::runtime_error("Stack underflow");
     }
 
-    return current_thread->stack[--current_thread->stack_size];
+    return current_thread->ctx.stack[--current_thread->ctx.stack_size];
 }
 
-inline Value& VM::peek(size_t depth) {
-    return current_thread->stack[current_thread->stack_size - 1 - depth];
+const Value& VM::peek(size_t depth) const {
+    return current_thread->ctx.peek_stack(depth);
+}
+
+void VM::poke(const Value &v, size_t depth) {
+    current_thread->ctx.poke_stack(v, depth);
 }
 
 void VM::debug_instruction(CallFrame &frame, OpCode op) {
@@ -258,26 +338,38 @@ void VM::debug_instruction(CallFrame &frame, OpCode op) {
               << " | ";
 
     std::cerr << "Stack: [";
-    for (size_t i = 0; i < current_thread->stack_size; ++i) {
-        std::cerr << current_thread->stack[i].to_string();
-        if (i < current_thread->stack_size - 1) std::cerr << ", ";
+    for (size_t i = 0; i < current_thread->ctx.stack_size; ++i) {
+        std::cerr << current_thread->ctx.stack[i].to_string();
+        if (i < current_thread->ctx.stack_size - 1) std::cerr << ", ";
     }
 
     std::cerr << "]\n";
 }
 
+std::string VM::stack_trace() const {
+    std::string trace;
+    for (auto it = current_thread->ctx.frames.rbegin(); it != current_thread->ctx.frames.rend(); ++it) {
+        auto &frame = *it;
+        trace += "  at " + frame.closure->func->to_string() + "\n";
+    }
+
+    return trace;
+}
+
 void VM::run() {
     while (true) {
-        if (current_thread->frames.empty()) {
+        if (vm_signal::suspend_requested) [[unlikely]] return;
+
+        if (current_thread->ctx.frames.empty()) [[unlikely]] {
             current_thread->state = GreenThread::Finished;
             return;
         }
 
-        CallFrame &current_frame = current_thread->frames.back();
+        CallFrame &current_frame = current_thread->ctx.frames.back();
         auto &chunk = current_frame.closure->func->chunk;
-        if (current_frame.ip >= chunk.code.size()) {
-            current_thread->frames.pop_back();
-            if (current_thread->frames.empty()) {
+        if (current_frame.ip >= chunk.code.size()) [[unlikely]] {
+            current_thread->ctx.frames.pop_back();
+            if (current_thread->ctx.frames.empty()) [[unlikely]] {
                 current_thread->state = GreenThread::Finished;
                 return;
             }
@@ -340,21 +432,21 @@ void VM::run() {
             case OP_LOAD_LOCAL: {
                 uint8_t local_idx = read_byte(current_frame);
                 int stack_idx = current_frame.base + local_idx;
-                if (stack_idx < 0 || stack_idx >= current_thread->stack_size) {
+                if (stack_idx < 0 || stack_idx >= current_thread->ctx.stack_size) {
                     throw std::runtime_error("Local variable index out of range");
                 }
 
-                push(current_thread->stack[stack_idx]);
+                push(current_thread->ctx.stack[stack_idx]);
                 break;
             }
             case OP_STORE_LOCAL: {
                 uint8_t local_idx = read_byte(current_frame);
                 int stack_idx = current_frame.base + local_idx;
-                if (stack_idx < 0 || stack_idx >= current_thread->stack_size) {
+                if (stack_idx < 0 || stack_idx >= current_thread->ctx.stack_size) {
                     throw std::runtime_error("Local variable index out of range");
                 }
 
-                current_thread->stack[stack_idx] = peek(0);
+                current_thread->ctx.stack[stack_idx] = peek(0);
                 break;
             }
             case OP_LOAD_UPVALUE: {
@@ -383,43 +475,35 @@ void VM::run() {
                 Value obj = pop();
 
                 if (obj.is_string()) {
-                    // Bind 'self' to the instance
-                    auto method_it = globals.find("String." + key);
-                    if (method_it == globals.end()) {
-                        throw std::runtime_error("Undefined method '" + key + "' for String");
-                    }
-                    auto method = method_it->second.as_native();
-                    method->bound_instance = obj;
-                    push(method);
+                    bind_native_method(obj, "String." + key);
                 } else if (obj.is_array()) {
-                    // Bind 'self' to the instance
-                    auto method_it = globals.find("Array." + key);
-                    if (method_it == globals.end()) {
-                        throw std::runtime_error("Undefined method '" + key + "' for Array");
-                    }
-                    auto method = method_it->second.as_native();
-                    method->bound_instance = obj;
-                    push(method);
+                    bind_native_method(obj, "Array." + key);
+                } else if (obj.is_byte_array()) {
+                    bind_native_method(obj, "ByteArray." + key);
                 } else if (obj.is_thread()) {
-                    // Bind 'self' to the instance
-                    auto method_it = globals.find("Thread." + key);
-                    if (method_it == globals.end()) {
-                        throw std::runtime_error("Undefined method '" + key + "' for Thread");
+                    bind_native_method(obj, "Thread." + key);
+                } else if (obj.is_io_handle()) {
+                    if (key == "fd") {
+                        push(obj.as_io_handle()->fd);
+                    } else if (key == "local_addr") {
+                        push(obj.as_io_handle()->metadata.local_address);
+                    } else if (key == "remote_addr") {
+                        push(obj.as_io_handle()->metadata.remote_address);
+                    } else {
+                        bind_native_method(obj, "IOHandle." + key);
                     }
-                    auto method = method_it->second.as_native();
-                    method->bound_instance = obj;
-                    push(method);
                 } else {
                     auto field_val = obj.get_index(key);
                     if (obj.is_struct_instance() && field_val.is_closure()) {
-                        // Bind 'self' to the instance
+                        // If it's a struct instance and the field is a closure, we need to create a method closure
                         auto closure = field_val.as_closure();
-                        closure->recv_self = obj;
-                        field_val = closure;
+                        auto method_closure = heap->allocate<MethodClosure>(closure, obj);
+                        field_val = method_closure;
                     }
 
                     push(field_val);
                 }
+
                 break;
             }
             case OP_STORE_FIELD: {
@@ -434,7 +518,11 @@ void VM::run() {
             case OP_LOAD_INDEX: {
                 Value index = pop();
                 Value container = pop();
-                push(container.get_index(index));
+                try {
+                    push(container.get_index(index));
+                } catch (const std::exception &e) {
+                    throw RuntimeError(*this, std::string("Indexing error: ") + e.what());
+                }
                 break;
             }
             case OP_STORE_INDEX: {
@@ -457,14 +545,14 @@ void VM::run() {
                 }
 
                 auto func = func_val.as_function();
-                auto closure = std::make_shared<Closure>(func);
+                auto closure = heap->allocate<Closure>(func);
 
                 // capture upvalues
                 for (int i = 0; i < func->upvalue_count; i++) {
                     uint8_t is_local = read_byte(current_frame);
                     uint8_t index = read_byte(current_frame);
                     if (is_local) {
-                        closure->upvalues.push_back(capture_upvalue(&current_thread->stack[current_frame.base + index]));
+                        closure->upvalues.push_back(capture_upvalue(current_frame.base + index));
                     } else {
                         closure->upvalues.push_back(current_frame.closure->upvalues[index]);
                     }
@@ -476,19 +564,19 @@ void VM::run() {
             case OP_RETURN: {
                 Value ret_val = pop();
                 close_upvalues(current_frame.base);
-                current_thread->frames.pop_back();
-                if (current_thread->frames.empty()) {
+                current_thread->ctx.frames.pop_back();
+                if (current_thread->ctx.frames.empty()) {
                     current_thread->state = GreenThread::Finished;
-                    scheduler.set_return_value(current_thread, ret_val);
+                    current_thread->return_value = ret_val;
                     return;
                 }
 
-                current_thread->stack_size = current_frame.base;
+                current_thread->ctx.stack_size = current_frame.base;
                 push(ret_val);
                 break;
             }
             case OP_CLOSE_UPVALUE: {
-                close_upvalues(static_cast<int>(current_thread->stack_size) - 1);
+                close_upvalues(static_cast<int>(current_thread->ctx.stack_size) - 1);
                 pop();
                 break;
             }
@@ -518,16 +606,16 @@ void VM::run() {
             case OP_MUL:
             case OP_DIV:
             case OP_MOD:
-            case OP_EQ: 
+            case OP_EQ:
             case OP_NEQ:
-            case OP_LT: 
-            case OP_LE: 
-            case OP_GT: 
+            case OP_LT:
+            case OP_LE:
+            case OP_GT:
             case OP_GE:
             case OP_BIT_AND:
             case OP_BIT_OR:
             case OP_BIT_XOR:
-            case OP_SHIFT_LEFT: 
+            case OP_SHIFT_LEFT:
             case OP_SHIFT_RIGHT: {
                 binary_op(op);
                 break;
@@ -541,54 +629,40 @@ void VM::run() {
             }
             case OP_SEND_PIPE: {
                 Value val = pop();
-                Value pipe_val = pop();
-                if (!pipe_val.is_pipe()) {
-                    throw std::runtime_error("Expected a pipe for SEND_PIPE");
-                }
+                Value sender_val = pop();
+                if (!sender_val.is_pipe()) throw std::runtime_error("Expected a pipe for SEND_PIPE");
 
-                auto pipe = pipe_val.as_pipe();
+                auto pipe = sender_val.as_pipe();
+                if (!pipe) throw std::runtime_error("Invalid pipe in SEND_PIPE");
 
-                if (pipe.get() == nullptr) {
-                    throw std::runtime_error("Invalid pipe in SEND_PIPE");
-                }
-
-                scheduler.send_to_pipe(pipe, val);
+                pipe->send(val, *this);
                 push(val);
                 break;
             }
             case OP_RECV_PIPE: {
-                Value pipe_val = pop();
-                if (!pipe_val.is_pipe()) {
-                    throw std::runtime_error("Expected a pipe for RECV_PIPE");
-                }
+                Value receiver_val = pop();
+                if (!receiver_val.is_pipe()) throw std::runtime_error("Expected a pipe for RECV_PIPE");
 
-                auto pipe = pipe_val.as_pipe();
+                auto pipe = receiver_val.as_pipe();
+                if (!pipe) throw std::runtime_error("Invalid pipe in RECV_PIPE");
 
-                if (pipe.get() == nullptr) {
-                    throw std::runtime_error("Invalid pipe in RECV_PIPE");
-                }
-
-                Value received = scheduler.receive_from_pipe(pipe);
-                push(received);
+                Value val = pipe->recv(*this);
+                push(val);
                 break;
             }
             case OP_CLOSE_PIPE: {
-                Value pipe_val = pop();
-                if (!pipe_val.is_pipe()) {
-                    throw std::runtime_error("Expected a pipe for CLOSE_PIPE");
-                }
+                Value closing_val = pop();
+                if (!closing_val.is_pipe()) throw std::runtime_error("Expected a pipe for CLOSE_PIPE");
 
-                auto pipe = pipe_val.as_pipe();
-                if (pipe.get() == nullptr) {
-                    throw std::runtime_error("Invalid pipe in CLOSE_PIPE");
-                }
+                auto pipe = closing_val.as_pipe();
+                if (!pipe) throw std::runtime_error("Invalid pipe in CLOSE_PIPE");
 
-                scheduler.close_pipe(pipe);
+                pipe->close(*this);
                 break;
             }
             case OP_SELECT_BEGIN: {
                 uint8_t case_count = read_byte(current_frame);
-                scheduler.select_begin(case_count);
+                current_thread->active_select = std::make_unique<SelectFrame>(case_count);
                 break;
             }
             case OP_SELECT_RECV: {
@@ -599,28 +673,23 @@ void VM::run() {
 
                 // select case is disabled
                 if (pipe_val.is_null()) {
-                    scheduler.select_add_recv_case(nullptr, current_frame.ip + jump_offset - 1, slot);
+                    current_thread->active_select->add_recv_case(nullptr, current_frame.ip + jump_offset - 1, slot);
                 } else {
-                    if (!pipe_val.is_pipe()) {
-                        throw std::runtime_error("Expected a pipe for SELECT_RECV");
-                    }
+                    if (!pipe_val.is_pipe()) throw std::runtime_error("Expected a pipe for SELECT_RECV");
 
                     auto pipe = pipe_val.as_pipe();
-
-                    if (pipe.get() == nullptr) {
-                        throw std::runtime_error("Invalid pipe in SELECT_RECV");
-                    }
+                    if (!pipe) throw std::runtime_error("Invalid pipe in SELECT_RECV");
 
                     if (pipe->closed && pipe->buffer.empty() && pipe->writers.empty()) {
-                        scheduler.select_add_recv_case(nullptr, current_frame.ip + jump_offset - 1, slot);
+                        current_thread->active_select->add_recv_case(nullptr, current_frame.ip + jump_offset - 1, slot);
                     } else {
-                        scheduler.select_add_recv_case(pipe, current_frame.ip + jump_offset - 1, slot);
+                        current_thread->active_select->add_recv_case(pipe, current_frame.ip + jump_offset - 1, slot);
                     }
                 }
 
                 if (slot != 0xFF) {
-                    current_thread->stack_size = std::max(current_thread->stack_size, static_cast<size_t>(slot + 1));
-                    current_thread->stack[slot] = {};
+                    current_thread->ctx.stack_size = std::max(current_thread->ctx.stack_size, static_cast<size_t>(slot + 1));
+                    current_thread->ctx.stack[slot] = {};
                 }
                 break;
             }
@@ -632,30 +701,27 @@ void VM::run() {
 
                 // select case is disabled
                 if (pipe_val.is_null()) {
-                    scheduler.select_add_send_case(nullptr, current_frame.ip + jump_offset, val);
+                    current_thread->active_select->add_send_case(nullptr, current_frame.ip + jump_offset, val);
                     break;
                 }
 
-                if (!pipe_val.is_pipe()) {
-                    throw std::runtime_error("Expected a pipe for SELECT_SEND");
-                }
+                if (!pipe_val.is_pipe()) throw std::runtime_error("Expected a pipe for SELECT_SEND");
 
                 auto pipe = pipe_val.as_pipe();
+                if (!pipe) throw std::runtime_error("Invalid pipe in SELECT_SEND");
 
-                if (pipe.get() == nullptr) {
-                    throw std::runtime_error("Invalid pipe in SELECT_SEND");
-                }
-
-                scheduler.select_add_send_case(pipe, current_frame.ip + jump_offset, val);
+                current_thread->active_select->add_send_case(pipe, current_frame.ip + jump_offset, val);
                 break;
             }
             case OP_SELECT_DEFAULT: {
                 uint16_t jump_offset = read_short(current_frame);
-                scheduler.select_add_default_case(current_frame.ip + jump_offset);
+                current_thread->active_select->add_default_case(current_frame.ip + jump_offset);
                 break;
             }
             case OP_SELECT_EXEC: {
-                scheduler.select_execute(current_frame.ip);
+                if (current_thread->active_select->execute(*this, current_frame.ip)) {
+                    current_thread->active_select.reset();
+                }
                 break;
             }
             case OP_NOT:
@@ -698,7 +764,8 @@ void VM::run() {
                     elements.push_back(pop());
                 }
                 std::reverse(elements.begin(), elements.end());
-                push(std::make_shared<Array>(elements));
+
+                push(heap->allocate<Array>(elements));
                 break;
             }
             case OP_MAKE_OBJECT: {
@@ -707,10 +774,11 @@ void VM::run() {
                 for (uint16_t i = 0; i < count; ++i) {
                     Value key = pop();
                     Value val = pop();
-                    if (!key.is_string()) throw std::runtime_error("Object keys must be strings");
+                    if (!key.is_string()) throw std::runtime_error("Record keys must be strings");
                     map[key.as_string()] = val;
                 }
-                push(std::make_shared<Object>(map));
+
+                push(heap->allocate<Record>(map));
                 break;
             }
             case OP_STRUCT: {
@@ -721,7 +789,8 @@ void VM::run() {
                 }
 
                 std::string struct_name = name_val.as_string();
-                auto strct = std::make_shared<Struct>(struct_name);
+                // auto strct = std::make_shared<Struct>(struct_name);
+                auto strct = heap->allocate<Struct>(struct_name);
                 push(strct);
                 break;
             }
@@ -750,20 +819,25 @@ void VM::run() {
                 }
 
                 size_t thread_count = static_cast<size_t>(thread_count_val.as_int());
-                Value closure_val = pop();
+                // Value closure_val = pop();
+                Value closure_val = peek();
                 if (!closure_val.is_closure()) {
                     throw std::runtime_error("Expected closure for SPAWN");
                 }
 
                 auto closure = closure_val.as_closure();
                 spawn_thread(closure, thread_count);
+
+                Value thread_handle = pop();
+                poke(thread_handle); // replace closure on stack with thread handle
+
                 break;
             }
             default:
                 throw std::runtime_error("Unknown opcode " + std::to_string((int)op));
         }
 
-        if (current_thread->state != GreenThread::Running) return;
+        if (current_thread->state != GreenThread::Running) [[unlikely]] return;
     }
 }
 
@@ -782,7 +856,7 @@ void VM::dump_profile() {
 
     std::cerr << "\n=== VM Opcode Profile ===\n";
     std::cerr << "Total instructions: " << total_instructions << "\n";
-    
+
     double total_ms = total_time_ns / 1e6;
     std::cerr << std::fixed << std::setprecision(3);
     std::cerr << "Total time: " << total_ms << " ms\n";
@@ -797,7 +871,7 @@ void VM::dump_profile() {
             : 0.0;
         std::cerr << "  " << opcode_to_string(op) << ": " << entries[i].second
                   << " (" << pct << "%)";
-        
+
         uint64_t ns = opcode_time_ns[entries[i].first];
         double ms = ns / 1e6;
         double tpct = total_time_ns > 0
@@ -824,14 +898,64 @@ inline void VM::unary_op(OpCode op) {
     }
 }
 
-inline void VM::binary_op(OpCode op) {
+Array* VM::concat_array(Array* a, Array* b) {
+    std::vector<Value> combined(a->size() + b->size());
+    combined.insert(combined.end(), a->begin(), a->end());
+    combined.insert(combined.end(), b->begin(), b->end());
+    return heap->allocate<Array>(combined);
+}
+
+ByteArray* VM::concat_bytearray(ByteArray* a, ByteArray* b) {
+    std::vector<uint8_t> combined(a->size() + b->size());
+    combined.insert(combined.end(), a->begin(), a->end());
+    combined.insert(combined.end(), b->begin(), b->end());
+    return heap->allocate<ByteArray>(combined);
+}
+
+void VM::binary_op(OpCode op) {
     Value b = pop();
     Value a = pop();
 
     switch (op) {
-        case OP_ADD:         push(a + b);  break;
-        case OP_SUB:         push(a - b);  break;
-        case OP_MUL:         push(a * b);  break;
+        case OP_ADD: {
+            if (a.is_array() && b.is_array()) {
+                push(concat_array(a.as_array(), b.as_array()));
+            } else if (a.is_byte_array() && b.is_byte_array()) {
+                push(concat_bytearray(a.as_byte_array(), b.as_byte_array()));
+            } else {
+                push(a + b);
+            }
+            break;
+        }
+        case OP_SUB: push(a - b);  break;
+        case OP_MUL: {
+            if ((a.is_array() && b.is_int()) || (a.is_int() && b.is_array())) {
+                Array* arr;
+                int times;
+
+                if (a.is_array() && b.is_int()) {
+                    arr = a.as_array();
+                    times = b.as_int();
+                } else {
+                    arr = b.as_array();
+                    times = a.as_int();
+                }
+
+                if (times < 0) {
+                    throw std::runtime_error("Cannot multiply array by negative integer");
+                }
+
+                std::vector<Value> combined;
+                combined.reserve(arr->elements.size() * static_cast<size_t>(times));
+                for (int i = 0; i < times; ++i) {
+                    combined.insert(combined.end(), arr->elements.begin(), arr->elements.end());
+                }
+                push(heap->allocate<Array>(combined));
+            } else {
+                push(a * b);
+            }
+            break;
+        }
         case OP_DIV:         push(a / b);  break;
         case OP_MOD:         push(a % b);  break;
         case OP_EQ:          push(a == b); break;
@@ -845,5 +969,6 @@ inline void VM::binary_op(OpCode op) {
         case OP_BIT_XOR:     push(a ^ b);  break;
         case OP_SHIFT_LEFT:  push(a << b); break;
         case OP_SHIFT_RIGHT: push(a >> b); break;
+        default: break;
     }
 }

@@ -17,7 +17,7 @@ struct SetDotExpr;
 struct SetIndexExpr;
 struct CallExpr;
 struct ArrayExpr;
-struct ObjectExpr;
+struct RecordExpr;
 struct IndexExpr;
 struct DotExpr;
 struct TernaryExpr;
@@ -28,6 +28,7 @@ struct SpawnExpr;
 struct ExprStmt;
 struct DispStmt;
 struct LetStmt;
+struct ConstStmt;
 struct BlockStmt;
 struct IfStmt;
 struct WhileStmt;
@@ -53,7 +54,7 @@ using Expr = std::variant<
     SetIndexExpr,
     CallExpr,
     ArrayExpr,
-    ObjectExpr,
+    RecordExpr,
     IndexExpr,
     DotExpr,
     TernaryExpr,
@@ -68,6 +69,7 @@ using Stmt = std::variant<
     ExprStmt,
     DispStmt,
     LetStmt,
+    ConstStmt,
     BlockStmt,
     IfStmt,
     WhileStmt,
@@ -156,7 +158,7 @@ struct ArrayExpr {
     std::vector<ExprPtr> elements;
 };
 
-struct ObjectExpr {
+struct RecordExpr {
     std::unordered_map<std::string, ExprPtr> items;
 };
 
@@ -197,6 +199,11 @@ struct DispStmt {
 };
 
 struct LetStmt {
+    Token name;
+    ExprPtr initializer;
+};
+
+struct ConstStmt {
     Token name;
     ExprPtr initializer;
 };

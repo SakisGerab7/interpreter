@@ -1,0 +1,11 @@
+spawn {
+    let c = connect("tcp", { host: "127.0.0.1", port: 8000 });
+    c.write("abcde");
+    c.close_();
+};
+
+let l = listen("tcp", { host: "*", port: 8000 });
+let c = l.accept();
+let b = c.read(10);
+disp b.str().trim();
+

@@ -1,0 +1,30 @@
+let path = "tmp/file_stream_open_test.txt";
+
+let writer = open(path, "w");
+writer.write("first line\nsecond line\n".bytes());
+writer.close_();
+
+disp "Wrote initial content";
+
+let reader = open(path, "r");
+let first_read = reader.read(1024);
+disp "Initial file content:";
+disp first_read.str();
+reader.close_();
+
+let appender = open(path, "a");
+appender.write("third line\n".bytes());
+appender.close_();
+
+disp "Appended one line";
+
+let reader2 = open(path, "r");
+let chunk1 = reader2.read(6);
+let chunk2 = reader2.read(1024);
+reader2.close_();
+
+disp "Chunk 1 (6 bytes): " + chunk1.str();
+disp "Chunk 2 (rest):";
+disp chunk2.str();
+
+disp "Done";

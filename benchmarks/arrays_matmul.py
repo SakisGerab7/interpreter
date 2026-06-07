@@ -2,7 +2,7 @@ import time
 import random
 
 def main() -> None:
-    n = 180
+    n = 256
 
     a = []
     b = []

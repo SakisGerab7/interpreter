@@ -29,7 +29,7 @@ struct AstPrinter {
     std::string print_set_index(const SetIndexExpr &expr);
     std::string print_call(const CallExpr &expr);
     std::string print_array(const ArrayExpr &expr);
-    std::string print_object(const ObjectExpr &expr);
+    std::string print_record(const RecordExpr &expr);
     std::string print_index(const IndexExpr&expr);
     std::string print_dot(const DotExpr &expr);
     std::string print_ternary(const TernaryExpr &expr);
@@ -40,6 +40,7 @@ struct AstPrinter {
     std::string print_expr(const ExprStmt &stmt);
     std::string print_disp(const DispStmt &stmt);
     std::string print_let(const LetStmt &stmt);
+    std::string print_const(const ConstStmt &stmt);
     std::string print_function(const FunctionStmt &stmt);
     std::string print_block(const BlockStmt &stmt);
     std::string print_if(const IfStmt &stmt);

@@ -1,0 +1,14 @@
+
+disp "ONE";
+
+{
+    let a = arange(0, 800, 1);
+
+    disp "TWO";
+}
+
+disp "THREE";
+
+let b = arange(0, 500, 1);
+
+disp "FOUR";

@@ -1,27 +1,34 @@
 fn main() {
-    let acc = 0;
+    let t2;
 
-    let ts = spawn 2 {
-        let tid = thread_id();
-        let n = (tid == 1) ? 5 : 8;
+    let t1 = spawn {
+        let acc = 0;
 
-        for let i = 0; i < n; i++ {
-            acc++;
-            disp ((tid == 1) ? "first" : "second") + " thread";
-            disp ((tid == 1) ? "first" : "second") + " thread";
-            sleep(1000);
+        fn work(tid) {
+            let n = (tid == 1) ? 5 : 8;
+
+            for let i = 0; i < n; i++ {
+                acc++;
+                disp ((tid == 1) ? "first" : "second") + " thread";
+                disp ((tid == 1) ? "first" : "second") + " thread";
+                sleep(1000);
+            }
         }
 
+        t2 = spawn {
+            let tid = thread_id();
+            work(tid);
+            return "thread " + tid + " got acc up to " + acc;
+        };
+
+        let tid = thread_id();
+        work(tid);
         return "thread " + tid + " got acc up to " + acc;
     };
 
-    disp ts;
+    disp t1.join();
+    disp t2.join();
 
-    for let i = 0; i < len(ts); i++ {
-        disp ts[i].join();
-    }
-
-    disp acc;
     disp "this is the end";
 }
 

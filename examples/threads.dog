@@ -16,6 +16,7 @@ let ts = spawn 3 {
 // Wait for all threads to complete and collect their results
 for let i = 0; i < len(ts); i++ {
     disp "Thread " + ts[i] + " got acc up to " + ts[i].join();
+    //ts[i].detach();
 }
 
 disp "Final acc = " + acc;

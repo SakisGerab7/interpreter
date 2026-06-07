@@ -1,12 +1,10 @@
 // Matrix multiplication benchmark (arrays)
 
-let n = 180;
+let n = 256;
 
 let a = [];
 let b = [];
 let c = [];
-
-srand(42);
 
 for let i = 0; i < n; i++ {
     let row_a = [];
@@ -25,13 +23,13 @@ for let i = 0; i < n; i++ {
 disp "Starting matrix multiplication...";
 
 let start = clock();
-for let i = 0; i < n; i = i + 1 {
+for let i = 0; i < n; i++ {
     let row_a = a[i];
-    for let k = 0; k < n; k = k + 1 {
+    for let k = 0; k < n; k++ {
         let aik = row_a[k];
         let row_c = c[i];
         let row_b = b[k];
-        for let j = 0; j < n; j = j + 1 {
+        for let j = 0; j < n; j++ {
             row_c[j] = row_c[j] + aik * row_b[j];
         }
     }

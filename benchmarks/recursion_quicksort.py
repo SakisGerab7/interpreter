@@ -26,7 +26,7 @@ def quicksort(arr, left, right):
 
 
 def main() -> None:
-    n = 200_000
+    n = 256 * 1024
     seed = 1_234_567
     arr = []
 
@@ -43,7 +43,7 @@ def main() -> None:
         checksum = (checksum + v) % 2_147_483_647
 
     print(f"sum={checksum}")
-    print(f"secs={elapsed}")
+    print(f"secs={elapsed:.4f} seconds")
 
 
 if __name__ == "__main__":

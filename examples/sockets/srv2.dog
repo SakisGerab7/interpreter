@@ -1,0 +1,51 @@
+struct Client {
+    fn init(conn, username) {
+        self.conn = conn;
+        self.username = username;
+    }
+
+    fn to_bytes() {
+        return pack(self.conn.fd, "u32") + pack(len(self.username), "u32") + self.username.bytes();
+    }
+}
+
+let clients = [];
+
+fn broadcast() {
+    while true {
+        sleep(3000);
+
+        let payload = pack(len(clients), "u32");
+
+        for let i = 0; i < len(clients); i++ {
+            payload += clients[i].to_bytes();
+        }
+
+        for let i = 0; i < len(clients); i++ {
+            disp "Sending payload " + payload + " to client " + clients[i].conn.fd + " " + clients[i].username;
+            clients[i].conn.write(payload);
+
+            disp "Payload is now " + payload;
+        }
+    }
+}
+
+fn handle_connection(conn) {
+    let name_len = unpack(conn.read(4), "u32");
+    let username = conn.read(name_len).str();
+    let new_client = Client(conn, username);
+    clients.push(new_client);
+
+    disp "[New client] fd: " + conn.fd + ", username: " + username + ", local address: " + conn.local_addr + ", remote address: " + conn.remote_addr;
+}
+
+let l = listen("tcp", { port: 8080 });
+
+disp "Listener with fd: " + l.fd + ", local address: " + l.local_addr;
+
+spawn { broadcast(); };
+
+while true {
+    let conn = l.accept();
+    spawn { handle_connection(conn); };
+}

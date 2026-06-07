@@ -15,20 +15,24 @@ fn is_prime(n) {
 
 fn worker(tasks, results) {
     let sum = 0;
-    while tasks {
+    let break = false;
+    while tasks && !break {
         let task = <-tasks;
-        if task == null { break; }
-        let start = task[0];
-        let end = task[1];
-        for let n = start; n <= end; n++ {
-            if is_prime(n) { sum += n; }
+        if task != null {
+            let start = task[0];
+            let end = task[1];
+            for let n = start; n <= end; n++ {
+                if is_prime(n) { sum += n; }
+            }
+        } else {
+            break = true;
         }
     }
     results <- sum;
 }
 
-let max_n = 200000;
-let chunk = 5000;
+let max_n = 64 * 1024;
+let chunk = 1024;
 let workers = 4;
 
 let tasks = pipe(64);

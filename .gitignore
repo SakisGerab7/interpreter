@@ -1,5 +1,4 @@
 .vscode
-interp
 tmp/
-obj/
-errors.log
+build/
+*.log

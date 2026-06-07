@@ -6,18 +6,21 @@
 #include "value.hpp"
 #include "ast.hpp"
 #include "scope_manager.hpp"
+#include "memory.hpp"
 
 struct Codegen {
     std::shared_ptr<ScopeManager> scopes = nullptr;
-    Function::Ptr curr;
-    std::vector<Function::Ptr> function_stack;
-    
-    Codegen() = default;
+    Function* curr;
+    std::vector<Function*> function_stack;
 
-    Function::Ptr compile(const std::shared_ptr<std::vector<StmtPtr>> &statements);
+    Heap* heap;
+    
+    Codegen(Heap* h) : heap(h) {}
+
+    Function* compile(const std::shared_ptr<std::vector<StmtPtr>> &statements);
 
     void begin_function(const std::string &name, int arity = 0, bool is_method = false);
-    Function::Ptr end_function(bool is_init = false);
+    Function* end_function(bool is_init = false);
 
     void generate(const Expr &expr);
     void generate(const Stmt &stmt);
@@ -42,7 +45,7 @@ struct Codegen {
     void emit_load_var(const Token &name);
     void emit_store_var(const Token &name);
     void emit_compound_op(const Token &op);
-    void emit_closure(const Function::Ptr &func, const std::vector<ScopeManager::Upvalue> &upvalues);
+    void emit_closure(Function* func, const std::vector<ScopeManager::Upvalue> &upvalues);
     
     int emit_jump(OpCode op);
     void patch_jump(int pos);
@@ -55,6 +58,7 @@ struct Codegen {
     void generate_expr(const ExprStmt &stmt);
     void generate_disp(const DispStmt &stmt);
     void generate_let(const LetStmt &stmt);
+    void generate_const(const ConstStmt &stmt);
     void generate_block(const BlockStmt &stmt);
     void generate_if(const IfStmt &stmt);
     void generate_while(const WhileStmt &stmt);
@@ -78,7 +82,7 @@ struct Codegen {
     void generate_set_index(const SetIndexExpr &expr);
     void generate_call(const CallExpr &expr);
     void generate_array(const ArrayExpr &expr);
-    void generate_object(const ObjectExpr &expr);
+    void generate_record(const RecordExpr &expr);
     void generate_index(const IndexExpr &expr);
     void generate_dot(const DotExpr &expr);
     void generate_ternary(const TernaryExpr &expr);
@@ -86,6 +90,14 @@ struct Codegen {
     void generate_self(const SelfExpr &expr);
     void generate_spawn(const SpawnExpr &expr);
 
-    void disassemble_function(const Function::Ptr &func);
+    Value evaluate_const_expr(const Expr &expr);
+    Value evaluate_const_binary(const BinaryExpr &expr);
+    Value evaluate_const_logical(const LogicalExpr &expr);
+    Value evaluate_const_unary(const UnaryExpr &expr);
+    Value evaluate_const_grouping(const GroupingExpr &expr);
+    Value evaluate_const_variable(const VariableExpr &expr);
+    Value evaluate_const_array(const ArrayExpr &expr);
+
+    void disassemble_function(Function* func);
     void disassemble();
 };

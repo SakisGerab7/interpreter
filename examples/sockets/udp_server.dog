@@ -1,0 +1,61 @@
+struct Client {
+    fn init(username, from) {
+        self.username = username;
+        self.from = from;
+    }
+
+    fn to_bytes() {
+        return pack(len(self.username), "u32") + self.username.bytes();
+    }
+}
+
+let clients = [];
+let unicast_sock = datagram("udp", { host: "0.0.0.0", port: 5000 });
+let multicast_sock = datagram("udp", { host: "224.0.0.1", port: 5001 });
+
+fn listen_for_clients() {
+    while true {
+        let msg = unicast_sock.recv();
+        let name_len = unpack(msg.data.slice(0, 4), "u32");
+        let username = msg.data.slice(4, 4 + name_len).str();
+        
+        // Check if client already exists
+        let exists = false;
+        for let i = 0; i < len(clients); i++ {
+            if clients[i].from.host == msg.from.host && clients[i].from.port == msg.from.port {
+                exists = true;
+                break;
+            }
+        }
+        
+        if !exists {
+            let client = Client(username, msg.from);
+            clients.push(client);
+            disp "[New client] " + msg.from.host + ":" + str(msg.from.port) + ", username: " + username;
+        }
+    }
+}
+
+fn broadcast_clients() {
+    while true {
+        sleep(3000);
+
+        let payload = pack(len(clients), "u32");
+
+        for let i = 0; i < len(clients); i++ {
+            payload += clients[i].to_bytes();
+        }
+
+        multicast_sock.send_to(payload, { host: "224.0.0.1", port: 5001 });
+        disp "[Broadcast] Sent " + len(clients) + " clients to multicast group";
+    }
+}
+
+spawn { listen_for_clients(); };
+spawn { broadcast_clients(); };
+
+disp "Server running on 0.0.0.0:5000, broadcasting to 224.0.0.1:5001";
+
+while true {
+    sleep(1000);
+}

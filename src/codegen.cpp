@@ -1,6 +1,6 @@
 #include "codegen.hpp"
 
-Function::Ptr Codegen::compile(const std::shared_ptr<std::vector<StmtPtr>> &statements) {
+Function* Codegen::compile(const std::shared_ptr<std::vector<StmtPtr>> &statements) {
     begin_function("$main", 0);
 
     for (const auto &s : *statements) {
@@ -11,14 +11,14 @@ Function::Ptr Codegen::compile(const std::shared_ptr<std::vector<StmtPtr>> &stat
 }
 
 void Codegen::begin_function(const std::string &name, int arity, bool is_method) {
-    auto new_func = std::make_shared<Function>(name, arity);
+    auto new_func = heap->allocate<Function>(name, arity);
     auto new_scope = std::make_shared<ScopeManager>(scopes, is_method);
     function_stack.push_back(new_func);
     curr = new_func;
     scopes = new_scope;
 }
 
-Function::Ptr Codegen::end_function(bool is_init) {
+Function* Codegen::end_function(bool is_init) {
     emit_return(is_init);
 
     auto finished_func = curr;
@@ -47,7 +47,7 @@ void Codegen::generate(const Expr &expr) {
         [&](const SetIndexExpr &e)  { generate_set_index(e); },
         [&](const CallExpr &e)      { generate_call(e);      },
         [&](const ArrayExpr &e)     { generate_array(e);     },
-        [&](const ObjectExpr &e)    { generate_object(e);    },
+        [&](const RecordExpr &e)    { generate_record(e);    },
         [&](const IndexExpr &e)     { generate_index(e);     },
         [&](const DotExpr &e)       { generate_dot(e);       },
         [&](const TernaryExpr &e)   { generate_ternary(e);   },
@@ -62,6 +62,7 @@ void Codegen::generate(const Stmt &stmt) {
         [&](const ExprStmt &s)     { generate_expr(s);     },
         [&](const DispStmt &s)     { generate_disp(s);     },
         [&](const LetStmt &s)      { generate_let(s);      },
+        [&](const ConstStmt &s)    { generate_const(s);    },
         [&](const BlockStmt &s)    { generate_block(s);    },
         [&](const IfStmt &s)       { generate_if(s);       },
         [&](const WhileStmt &s)    { generate_while(s);    },
@@ -212,7 +213,7 @@ void Codegen::define_variable(const Token &name) {
     emit(name_idx);
 }
 
-void Codegen::emit_closure(const Function::Ptr &func, const std::vector<ScopeManager::Upvalue> &upvalues) {
+void Codegen::emit_closure(Function* func, const std::vector<ScopeManager::Upvalue> &upvalues) {
     uint16_t func_idx = make_constant(func);
     emit(OP_CLOSURE);
     emit(func_idx);
@@ -242,6 +243,113 @@ void Codegen::generate_let(const LetStmt &stmt) {
     }
 
     define_variable(stmt.name);
+}
+
+Value Codegen::evaluate_const_expr(const Expr &expr) {
+    return {};
+    // return std::visit(Overloaded{
+    //     [&](const BinaryExpr &e)    { return evaluate_const_binary(e);    },
+    //     [&](const LogicalExpr &e)   { return evaluate_const_logical(e);   },
+    //     [&](const UnaryExpr &e)     { return evaluate_const_unary(e);     },
+    //     [&](const PostfixExpr &e)   { throw std::runtime_error("Cannot evaluate postfix expression as constant"); },
+    //     [&](const GroupingExpr &e)  { return evaluate_const_grouping(e);  },
+    //     [&](const LiteralExpr &e)   { return e.literal;                   },
+    //     [&](const VariableExpr &e)  { return evaluate_const_variable(e);  }, // Check if variable is a compile-time constant
+    //     [&](const AssignExpr &e)    { throw std::runtime_error("Cannot evaluate assignment expression as constant"); },
+    //     [&](const SetDotExpr &e)    { throw std::runtime_error("Cannot evaluate set-dot expression as constant"); },
+    //     [&](const SetIndexExpr &e)  { throw std::runtime_error("Cannot evaluate set-index expression as constant"); },
+    //     [&](const CallExpr &e)      { throw std::runtime_error("Cannot evaluate call expression as constant"); },
+    //     [&](const ArrayExpr &e)     { return evaluate_const_array(e);     },
+    //     [&](const RecordExpr &e)    { throw std::runtime_error("Cannot evaluate record expression as constant"); },
+    //     [&](const IndexExpr &e)     { throw std::runtime_error("Cannot evaluate index expression as constant"); },
+    //     [&](const DotExpr &e)       { throw std::runtime_error("Cannot evaluate dot expression as constant"); },
+    //     [&](const TernaryExpr &e)   { throw std::runtime_error("Cannot evaluate ternary expression as constant"); },
+    //     [&](const LambdaExpr &e)    { throw std::runtime_error("Cannot evaluate lambda expression as constant"); },
+    //     [&](const SelfExpr &e)      { throw std::runtime_error("Cannot evaluate self expression as constant"); },
+    //     [&](const SpawnExpr &e)     { throw std::runtime_error("Cannot evaluate spawn expression as constant"); },
+    // }, expr);
+}
+
+Value Codegen::evaluate_const_binary(const BinaryExpr &expr) {
+    Value left = evaluate_const_expr(*expr.left);
+    Value right = evaluate_const_expr(*expr.right);
+
+    switch (expr.op.type) {
+        case TokenType::Plus:  return left + right;
+        case TokenType::Minus: return left - right;
+        case TokenType::Mult:  return left * right;
+        case TokenType::Div:   return left / right;
+        case TokenType::Mod:   return left % right;
+        case TokenType::Equal: return left == right;
+        case TokenType::NotEqual: return left != right;
+        case TokenType::Greater: return left > right;
+        case TokenType::Less: return left < right;
+        case TokenType::GreaterEqual: return left >= right;
+        case TokenType::LessEqual: return left <= right;
+        case TokenType::BitAnd: return left & right;
+        case TokenType::BitXor: return left ^ right;
+        case TokenType::BitOr: return left | right;
+        case TokenType::BitShiftLeft: return left << right;
+        case TokenType::BitShiftRight: return left >> right;
+        default:
+            throw std::runtime_error("Unsupported binary operator in constant expression: " + expr.op.value);
+    }
+}
+
+Value Codegen::evaluate_const_logical(const LogicalExpr &expr) {
+    Value left = evaluate_const_expr(*expr.left);
+
+    if (expr.op.type == TokenType::Or) {
+        if (left.is_truthy()) return left;
+        return evaluate_const_expr(*expr.right);
+    } else if (expr.op.type == TokenType::And) {
+        if (!left.is_truthy()) return left;
+        return evaluate_const_expr(*expr.right);
+    } else {
+        throw std::runtime_error("Unsupported logical operator in constant expression: " + expr.op.value);
+    }
+}
+
+Value Codegen::evaluate_const_unary(const UnaryExpr &expr) {
+    Value right = evaluate_const_expr(*expr.right);
+
+    switch (expr.op.type) {
+        case TokenType::Minus: return -right;
+        case TokenType::Not: return !right;
+        case TokenType::BitNot: return ~right;
+        default:
+            throw std::runtime_error("Unsupported unary operator in constant expression: " + expr.op.value);
+    }
+}
+
+Value Codegen::evaluate_const_grouping(const GroupingExpr &expr) {
+    return evaluate_const_expr(*expr.grouped);
+}
+
+Value Codegen::evaluate_const_variable(const VariableExpr &expr) {
+    Value value;
+    try {
+        value = scopes->resolve_const(expr.name);
+    } catch (const std::runtime_error &) {
+        throw std::runtime_error("Undefined variable in constant expression: " + expr.name.value);
+    }
+
+    return value;
+}
+
+Value Codegen::evaluate_const_array(const ArrayExpr &expr) {
+    std::vector<Value> elements;
+    for (const auto &e : expr.elements) {
+        elements.push_back(evaluate_const_expr(*e));
+    }
+
+    return heap->allocate<Array>(std::move(elements));
+}
+
+void Codegen::generate_const(const ConstStmt &stmt) {
+    scopes->declare_const(stmt.name); // declare with dummy value to reserve name and prevent recursion
+    auto const_value = evaluate_const_expr(*stmt.initializer); // will throw if initializer is not a valid constant expression
+    scopes->initialize_const(const_value); // mark constant as initialized with actual value
 }
 
 void Codegen::generate_block(const BlockStmt &stmt) {
@@ -799,7 +907,7 @@ void Codegen::generate_array(const ArrayExpr &expr) {
     emit(static_cast<uint16_t>(expr.elements.size()));
 }
 
-void Codegen::generate_object(const ObjectExpr &expr) {
+void Codegen::generate_record(const RecordExpr &expr) {
     for (auto &[key, val] : expr.items) {
         generate(*val);              // push value
         uint16_t key_idx = make_constant(key);
@@ -894,7 +1002,7 @@ void Codegen::generate_spawn(const SpawnExpr &expr) {
     emit(OP_SPAWN);
 }
 
-void Codegen::disassemble_function(const Function::Ptr &func) {
+void Codegen::disassemble_function(Function* func) {
     std::cout << "\n== " << func->name << " ==\n";
     std::cout << "Arity: " << func->arity << ", Upvalues: " << func->upvalue_count << "\n";
     
@@ -918,7 +1026,6 @@ void Codegen::disassemble_function(const Function::Ptr &func) {
             case OP_DEFINE_GLOBAL:
             case OP_LOAD_FIELD:
             case OP_STORE_FIELD:
-            case OP_CLOSURE:
             case OP_STRUCT:
             case OP_METHOD:
             case OP_MAKE_ARRAY:
@@ -933,15 +1040,45 @@ void Codegen::disassemble_function(const Function::Ptr &func) {
                 }
                 break;
             }
+            case OP_CLOSURE: {
+                // Also print upvalue info for closures
+                if (i + 1 < code.size()) {
+                    uint16_t func_idx = (static_cast<uint16_t>(code[i]) << 8) | code[i + 1];
+                    printf(" #%u", func_idx);
+                    if (func_idx < constants.size() && constants[func_idx].is_function()) {
+                        auto closure_func = constants[func_idx].as_function();
+                        std::cout << " (" << closure_func->name << ")";
+                        // Print upvalue details
+                        for (int j = 0; j < closure_func->upvalue_count; ++j) {
+                            if (i + 2 < code.size()) {
+                                uint8_t is_local = code[i + 2];
+                                uint8_t index = code[i + 3];
+                                std::cout << "\n    Upvalue " << j << ": " 
+                                          << (is_local ? "local" : "upvalue") 
+                                          << " index " << static_cast<int>(index);
+                                i += 2;
+                            }
+                        }
+                    }
+                    i += 2;
+                }
+                break;
+            }
             case OP_LOAD_LOCAL:
             case OP_STORE_LOCAL:
             case OP_LOAD_UPVALUE:
             case OP_STORE_UPVALUE:
-            case OP_CALL:
             case OP_ICONST8:
             case OP_SELECT_BEGIN: {
                 if (i < code.size()) {
                     printf(" %u", code[i]);
+                    i++;
+                }
+                break;
+            }
+            case OP_CALL: {
+                if (i < code.size()) {
+                    printf(" %u (%s)", code[i], constants[code[i]].to_string().c_str());
                     i++;
                 }
                 break;
@@ -974,9 +1111,14 @@ void Codegen::disassemble_function(const Function::Ptr &func) {
         
         std::cout << "\n";
     }
+
+    for (const auto &v : constants) {
+        if (v.is_function()) {
+            disassemble_function(v.as_function());
+        }
+    }
 }
 
 void Codegen::disassemble() {
-    std::cout << "== Disassembly of function: " << curr->name << " ==\n";
     disassemble_function(curr);
 }

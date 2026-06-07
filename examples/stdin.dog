@@ -1,0 +1,3 @@
+disp "Enter your name: ";
+let name = stdin.read_line().str().trim();
+disp "Hello, " + name + "!";

@@ -1,0 +1,16 @@
+fn make_counter() {
+    let count = 0;
+
+    fn counter() {
+        return ++count;
+    }
+
+    return counter;
+}
+
+let my_counter = make_counter();
+disp my_counter(); // 1
+disp my_counter(); // 2
+disp my_counter(); // 3
+disp my_counter(); // 4
+disp my_counter(); // 5

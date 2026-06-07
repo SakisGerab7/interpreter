@@ -33,7 +33,7 @@ std::string AstPrinter::print(const Expr &expr) {
         [&](const SetIndexExpr &e) { return print_set_index(e); },
         [&](const CallExpr &e)     { return print_call(e);      },
         [&](const ArrayExpr &e)    { return print_array(e);     },
-        [&](const ObjectExpr &e)   { return print_object(e);    },
+        [&](const RecordExpr &e)   { return print_record(e);    },
         [&](const IndexExpr &e)    { return print_index(e);     },
         [&](const DotExpr &e)      { return print_dot(e);       },
         [&](const TernaryExpr &e)  { return print_ternary(e);   },
@@ -48,6 +48,7 @@ std::string AstPrinter::print(const Stmt &stmt) {
         [&](const ExprStmt &s)     { return print_expr(s);     },
         [&](const DispStmt &s)     { return print_disp(s);     },
         [&](const LetStmt &s)      { return print_let(s);      },
+        [&](const ConstStmt &s)    { return print_const(s);    },
         [&](const BlockStmt &s)    { return print_block(s);    },
         [&](const IfStmt &s)       { return print_if(s);       },
         [&](const WhileStmt &s)    { return print_while(s);    },
@@ -124,7 +125,7 @@ std::string AstPrinter::print_array(const ArrayExpr &expr) {
     return parenthesize(colored("array", Color::Keyword), elements);
 }
 
-std::string AstPrinter::print_object(const ObjectExpr &expr) {
+std::string AstPrinter::print_record(const RecordExpr &expr) {
     std::stringstream keys;
     std::vector<const Expr*> values;
     values.reserve(expr.items.size());
@@ -134,7 +135,7 @@ std::string AstPrinter::print_object(const ObjectExpr &expr) {
         values.push_back(value.get());
     }
 
-    return parenthesize(colored("object", Color::Keyword) + colored(keys.str(), Color::String), values);
+    return parenthesize(colored("record", Color::Keyword) + colored(keys.str(), Color::String), values);
 }
 
 std::string AstPrinter::print_index(const IndexExpr &expr) {
@@ -204,6 +205,10 @@ std::string AstPrinter::print_disp(const DispStmt &stmt) {
 
 std::string AstPrinter::print_let(const LetStmt &stmt) {
     return indent() + parenthesize(colored("let ", Color::Keyword) + colored(stmt.name.value, Color::Ident), stmt.initializer.get());
+}
+
+std::string AstPrinter::print_const(const ConstStmt &stmt) {
+    return indent() + parenthesize(colored("const ", Color::Keyword) + colored(stmt.name.value, Color::Ident), stmt.initializer.get());
 }
 
 std::string AstPrinter::print_function(const FunctionStmt &stmt) {
@@ -369,7 +374,7 @@ std::string AstPrinter::print_select(const SelectStmt &stmt) {
             if (!recv_clause.discard) {
                 out << " " << colored("let", Color::Keyword) << " ";
             }
-            
+
             out << (recv_clause.var_name.value != "" ? colored(recv_clause.var_name.value, Color::Ident) : "")
                 << " " << print(*recv_clause.pipe_expr) << "\n";
             {
@@ -388,7 +393,7 @@ std::string AstPrinter::print_select(const SelectStmt &stmt) {
                 IndentGuard body_guard(indent_level);
                 out << print(*stmt.default_body);
             }
-            
+
             out << ")";
         }
     }
