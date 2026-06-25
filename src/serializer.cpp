@@ -703,7 +703,7 @@ void JsonSerializer::print_io_handle(IOHandle* handle) {
                     out << indent() << "\"type\": " << static_cast<int>(op.type) << ",\n";
                     out << indent() << "\"thread_id\": " << (op.thread ? std::to_string(op.thread->id) : "null") << ",\n";
                     out << indent() << "\"nbytes\": ";
-                    if (op.type == IOOperation::Type::ReadNumBytes || op.type == IOOperation::Type::Write) {
+                    if (op.type == IOOperation::Type::ReadNumBytes) {
                         out << op.nbytes;
                     } else {
                         out << "null";
@@ -714,6 +714,19 @@ void JsonSerializer::print_io_handle(IOHandle* handle) {
                         out << static_cast<int>(op.delimiter);
                     } else {
                         out << "null";
+                    }
+                    out << ",\n";
+                    out << indent() << "\"write_progress\": ";
+                    if (op.type == IOOperation::Type::Write) {
+                        out << op.write_progress;
+                    } else {
+                        out << "null";
+                    }
+                    out << ",\n";
+                    out << indent() << "\"write_buffer\": [";
+                    for (size_t i = 0; i < op.write_bytes.size(); i++) {
+                        out << static_cast<int>(op.write_bytes[i]);
+                        if (i < op.write_bytes.size() - 1) out << ", ";
                     }
                     out << "\n";
                 }
@@ -734,12 +747,6 @@ void JsonSerializer::print_io_handle(IOHandle* handle) {
     for (size_t i = 0; i < handle->read_buffer.size(); i++) {
         out << static_cast<int>(handle->read_buffer[i]);
         if (i < handle->read_buffer.size() - 1) out << ", ";
-    }
-    out << "],\n";
-    out << indent() << "\"write_buffer\": [";
-    for (size_t i = 0; i < handle->write_buffer.size(); i++) {
-        out << static_cast<int>(handle->write_buffer[i]);
-        if (i < handle->write_buffer.size() - 1) out << ", ";
     }
     out << "]\n";
 }
@@ -768,11 +775,17 @@ void BinarySerializer::print_io_handle(IOHandle* handle) {
             }
             switch (op.type) {
                 case IOOperation::Type::ReadNumBytes:
-                case IOOperation::Type::Write:
                     print_number<size_t>(op.nbytes);
                     break;
                 case IOOperation::Type::ReadUntilDelimiter:
                     print_number<uint8_t>(op.delimiter);
+                    break;
+                case IOOperation::Type::Write:
+                    print_number<size_t>(op.write_progress);
+                    print_number<size_t>(op.write_bytes.size());
+                    if (!op.write_bytes.empty()) {
+                        print_buffer(reinterpret_cast<const char*>(op.write_bytes.data()), op.write_bytes.size());
+                    }
                     break;
                 case IOOperation::Type::ReadAll:
                 case IOOperation::Type::Connect:
@@ -790,11 +803,6 @@ void BinarySerializer::print_io_handle(IOHandle* handle) {
     print_number<size_t>(handle->read_buffer.size());
     if (!handle->read_buffer.empty()) {
         print_buffer(reinterpret_cast<const char*>(handle->read_buffer.data()), handle->read_buffer.size());
-    }
-
-    print_number<size_t>(handle->write_buffer.size());
-    if (!handle->write_buffer.empty()) {
-        print_buffer(reinterpret_cast<const char*>(handle->write_buffer.data()), handle->write_buffer.size());
     }
 }
 

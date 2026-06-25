@@ -94,7 +94,7 @@ VM::VM(const std::vector<std::string> &args, Heap* heap_ptr) : scheduler(*this),
 
     // I/O related globals
     globals["stdin"] = scheduler.stdin_handle();
-    globals["stdout"] = heap->allocate<IOHandle>();
+    globals["stdout"] = scheduler.stdout_handle();
     globals["stderr"] = heap->allocate<IOHandle>();
 
     // I/O related natives
@@ -385,7 +385,7 @@ void VM::run() {
         OpTimer timer(*this, static_cast<uint8_t>(op));
 #endif
 
-        // debug_instruction(current_frame, op);
+        debug_instruction(current_frame, op);
 
         switch (op) {
             case OP_NULL:  push({});    break;

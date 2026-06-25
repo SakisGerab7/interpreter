@@ -1,5 +1,8 @@
+#include "io_handler.hpp"
 #include "io_poller.hpp"
 #include "vm.hpp"
+#include <cstdint>
+#include <vector>
 #include "scheduler.hpp"
 
 static constexpr size_t CHUNK_SIZE = 5;
@@ -126,6 +129,18 @@ IOHandle* Scheduler::stdin_handle() {
     auto handle = vm.heap->allocate<IOHandle>();
     handle->kind = IOHandle::Kind::Stdin;
     handle->fd = STDIN_FILENO;
+
+    io_poller->add_handle(handle);
+
+    return handle;
+}
+
+IOHandle* Scheduler::stdout_handle() {
+    set_non_blocking(STDOUT_FILENO);
+
+    auto handle = vm.heap->allocate<IOHandle>();
+    handle->kind = IOHandle::Kind::Stdout;
+    handle->fd = STDOUT_FILENO;
 
     io_poller->add_handle(handle);
 
@@ -378,20 +393,24 @@ Value Scheduler::io_write(IOHandle* handle, const Value &val) {
         throw std::runtime_error("Cannot write to a closed I/O handler");
     }
 
+    IOOperation write_op;
+    write_op.type = IOOperation::Type::Write;
+    write_op.thread = vm.current_thread;
+
     if (val.is_string()) {
         const std::string &str = val.as_string();
-        handle->write_buffer.assign(str.begin(), str.end());
+        write_op.write_bytes.assign(str.begin(), str.end());
     } else if (val.is_byte_array()) {
         ByteArray* byte_arr = val.as_byte_array();
-        handle->write_buffer.assign(byte_arr->data.begin(), byte_arr->data.end());
+        write_op.write_bytes.assign(byte_arr->data.begin(), byte_arr->data.end());
     } else {
         throw std::runtime_error("Unsupported value type for write operation");
     }
 
-    size_t total_bytes = handle->write_buffer.size();
-
-    while (!handle->write_buffer.empty()) {
-        ssize_t bytes_written = write(handle->fd, handle->write_buffer.data(), handle->write_buffer.size());
+    while (write_op.write_progress < write_op.write_bytes.size()) {
+        ssize_t bytes_written = write(handle->fd,
+                                      write_op.write_bytes.data() + write_op.write_progress,
+                                      write_op.write_bytes.size() - write_op.write_progress);
         if (bytes_written == -1) {
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 throw std::runtime_error("Failed to write to I/O handler: " + std::string(strerror(errno)));
@@ -399,22 +418,17 @@ Value Scheduler::io_write(IOHandle* handle, const Value &val) {
 
             handle->write_interest = true;
 
-            IOOperation pending_write;
-            pending_write.type = IOOperation::Type::Write;
-            pending_write.thread = vm.current_thread;
-            pending_write.nbytes = total_bytes;
-            handle->writes.push_back(pending_write);
+            handle->writes.push_back(write_op);
 
             vm.current_thread->state = GreenThread::Blocked;
             vm.current_thread->wake_time = {};
             return 0;
         }
 
-        // Remove the bytes that were successfully written from the buffer
-        handle->write_buffer.erase(handle->write_buffer.begin(), handle->write_buffer.begin() + bytes_written);
+        write_op.write_progress += bytes_written;
     }
 
-    return static_cast<int>(total_bytes);
+    return static_cast<int>(write_op.write_progress);
 }
 
 Value Scheduler::io_read_num_bytes(IOHandle* handle, size_t nbytes) {
@@ -674,6 +688,8 @@ void Scheduler::io_close(IOHandle* handle) {
         enqueue(pending_connect.thread);
     }
     handle->connects.clear();
+
+    io_poller->remove_handle(handle);
 }
 
 void Scheduler::complete_connects(IOHandle* handle) {
@@ -851,7 +867,7 @@ void Scheduler::complete_read_all(IOHandle* handle, const IOOperation &pending_r
 }
 
 void Scheduler::complete_writes(IOHandle* handle) {
-    while (!handle->write_buffer.empty() && !handle->writes.empty()) {
+    while (!handle->writes.empty()) {
         auto &pending_write = handle->writes.front();
 
         complete_write(handle, pending_write);
@@ -863,26 +879,25 @@ void Scheduler::complete_writes(IOHandle* handle) {
         handle->writes.pop_front();
     }
 
-    if (handle->write_buffer.empty()) {
-        handle->write_interest = false;
-    }
+    handle->write_interest = false;
 }
 
-void Scheduler::complete_write(IOHandle* handle, const IOOperation &pending_write) {
-    while (!handle->write_buffer.empty()) {
-        ssize_t bytes_sent = write(handle->fd, handle->write_buffer.data(), handle->write_buffer.size());
-        if (bytes_sent < 0) {
+void Scheduler::complete_write(IOHandle* handle, IOOperation &pending_write) {
+    while (pending_write.write_progress < pending_write.write_bytes.size()) {
+        ssize_t bytes_written = write(handle->fd,
+                                      pending_write.write_bytes.data() + pending_write.write_progress,
+                                      pending_write.write_bytes.size() - pending_write.write_progress);
+        if (bytes_written < 0) {
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 throw std::runtime_error("Failed to write data on stream: " + std::string(strerror(errno)));
             }
             return; // still not ready, stay blocked
         }
 
-        // Remove sent data from buffer
-        handle->write_buffer.erase(handle->write_buffer.begin(), handle->write_buffer.begin() + bytes_sent);
+        pending_write.write_progress += bytes_written;
     }
 
-    pending_write.thread->ctx.poke_stack(static_cast<int>(pending_write.nbytes));
+    pending_write.thread->ctx.poke_stack(static_cast<int>(pending_write.write_progress));
     pending_write.thread->state = GreenThread::Ready;
     enqueue(pending_write.thread);
 }
@@ -976,17 +991,16 @@ Value Scheduler::schedule() {
         auto now = std::chrono::steady_clock::now();
         wake_threads(now);
 
-        // If a thread is already runnable, dispatch it immediately instead of
-        // waiting in epoll and delaying select/pipe wakeups.
-        if (ready_queue.empty()) {
-            // Calculate how long to wait for socket events
-            // (until the next thread wake time, or a default timeout)
-            int poll_timeout_ms = calculate_poll_timeout(now);
-            poll_io_events(poll_timeout_ms);
-        }
+        poll_io_events(0);
 
         auto next_thread = dequeue();
-        if (!next_thread) continue;
+
+        if (!next_thread) {
+            poll_io_events(calculate_poll_timeout(now));
+
+            next_thread = dequeue();
+            if (!next_thread) continue;
+        }
 
         std::cerr << "[Scheduling thread " << next_thread->ID << "]\n";
 

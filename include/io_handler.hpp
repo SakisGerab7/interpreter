@@ -1,8 +1,8 @@
 #pragma once
 
-#include "memory.hpp"
 #include "green_thread.hpp"
 #include "value.hpp"
+#include <cstddef>
 
 struct IOOperation {
     enum Type {
@@ -15,9 +15,14 @@ struct IOOperation {
     } type;
 
     GreenThread* thread; // the thread that initiated this I/O operation
-    size_t nbytes; // for ReadNumBytes and Write operations
+
+    size_t nbytes; // for ReadNumBytes operations
     uint8_t delimiter; // for ReadUntilDelimiter operations
+
+    std::vector<uint8_t> write_bytes;
+    size_t write_progress = 0;
 };
+
 
 struct IOHandle : public Object {
     enum class Kind {
@@ -27,6 +32,7 @@ struct IOHandle : public Object {
         StreamTCP,
         File,
         Stdin,
+        Stdout,
     } kind;
 
     int fd;
@@ -47,9 +53,8 @@ struct IOHandle : public Object {
     std::deque<IOOperation> accepts;  // for listeners
     std::deque<IOOperation> connects; // for streams in the process of connecting
 
-    // Buffers for partial reads/writes
+    // Buffer for partial reads
     std::vector<uint8_t> read_buffer;
-    std::vector<uint8_t> write_buffer;
 
     IOHandle() : Object(Type::IOHandle) {}
 
@@ -75,7 +80,6 @@ struct IOHandle : public Object {
         size += metadata.local_address.capacity() * sizeof(char);
         size += metadata.remote_address.capacity() * sizeof(char);
         size += read_buffer.capacity() * sizeof(uint8_t);
-        size += write_buffer.capacity() * sizeof(uint8_t);
         size += reads.size() * sizeof(IOOperation);
         size += writes.size() * sizeof(IOOperation);
         size += accepts.size() * sizeof(IOOperation);

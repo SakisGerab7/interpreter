@@ -1,4 +1,5 @@
 #include "io_poller.hpp"
+#include <iostream>
 
 EpollPoller::EpollPoller() {
     epoll_fd = epoll_create1(0);
@@ -111,7 +112,7 @@ void SelectPoller::poll(int timeout_ms, std::function<void(const IOEvent& event)
 
     int num_events = select(max_fd + 1, &read_fds_copy, &write_fds_copy, &error_fds_copy, &timeout);
     if (num_events == -1) {
-        throw std::runtime_error("Failed to wait for select events");
+        throw std::runtime_error("Failed to wait for select events: " + std::string(strerror(errno)));
     }
 
     for (const auto& [fd, handle] : handle_map) {

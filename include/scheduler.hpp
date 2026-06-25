@@ -45,6 +45,7 @@ struct Scheduler {
 
     // standard I/O handlers
     IOHandle* stdin_handle();
+    IOHandle* stdout_handle();
 
     // I/O operations
     IOHandle* file_open(const std::string &path, const std::string &mode);
@@ -72,7 +73,7 @@ struct Scheduler {
     void complete_read_num_bytes(IOHandle* handle, const IOOperation &pending_read);
     void complete_read_until_delimiter(IOHandle* handle, const IOOperation &pending_read);
     void complete_read_all(IOHandle* handle, const IOOperation &pending_read);
-    void complete_write(IOHandle* handle, const IOOperation &pending_write);
+    void complete_write(IOHandle* handle, IOOperation &pending_write);
     void complete_accept(IOHandle* handle, const IOOperation &pending_accept);
 
     // Socket event polling
