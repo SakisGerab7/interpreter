@@ -21,11 +21,11 @@ target_include_directories(interp PRIVATE
 target_compile_options(interp PRIVATE
     -O3
     -g
-    # -pg
+    #-pg
     -fsanitize=address
 )
 
 target_link_options(interp PRIVATE
-    # -pg
+    #-pg
     -fsanitize=address
 )

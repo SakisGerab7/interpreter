@@ -1,3 +1,17 @@
+fn foo(f) {
+    let p = pipe(-1);
+    spawn { p <- f(); };
+    return p;
+}
+
 disp "Enter your name: ";
-let name = stdin.read_line().str().trim();
-disp "Hello, " + name + "!";
+
+select {
+    let result = <-foo(fn() -> stdin.read_line()) {
+        disp "Hello, " + result.str().trim() + "!";
+    }
+
+    <-foo(fn() { sleep(5000); return null; }) {
+        disp "Goodbye!";
+    }
+}

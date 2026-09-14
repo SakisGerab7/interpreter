@@ -1,5 +1,6 @@
 #include "memory.hpp"
 #include "vm.hpp"
+#include <iostream>
 
 Heap::~Heap() {
     for (Object* obj : objects) {
@@ -24,7 +25,8 @@ void Heap::collect_garbage() {
     if (debug) {
         std::cerr << "[GC] Starting garbage collection. Current allocations: " << objects.size()
                     << ", total bytes: " << total_bytes
-                    << ", next GC threshold: " << next_gc_threshold << "\n";
+                    << ", next GC threshold: " << next_gc_threshold
+                    << ", connections: " << connections << "\n";
     }
 
     size_t before_count = objects.size();
@@ -38,7 +40,8 @@ void Heap::collect_garbage() {
     if (debug) {
         std::cerr << "[GC] Finished garbage collection. Freed " << (before_count - objects.size()) << " objects, "
                   << "total bytes: " << total_bytes
-                  << ", next GC threshold: " << next_gc_threshold << "\n";
+                  << ", next GC threshold: " << next_gc_threshold
+                  << ", connections: " << connections << "\n";
     }
 }
 
@@ -81,7 +84,16 @@ void Heap::sweep() {
             objects[dst++] = obj;
         } else {
             log_deallocation(obj);
+            free_ids.push_back(obj->id);
             total_bytes -= obj->tracked_size;
+
+            if (IOHandle* handle = dynamic_cast<IOHandle*>(obj)) {
+                if (handle->kind == IOHandle::Kind::StreamTCP || handle->kind == IOHandle::Kind::StreamUnix) {
+                    connections--;
+                    std::cerr << "connections " << connections << "\n";
+                }
+            }
+
             delete obj;
         }
     }
@@ -175,14 +187,16 @@ void Heap::blacken_object(Object* obj) {
         }
         case Object::Type::Thread: {
             auto thread = obj->as_thread();
-            for (size_t i = 0; i < thread->ctx.stack_size; i++) {
-                mark_value(thread->ctx.stack[i]);
-            }
-            for (const CallFrame &frame : thread->ctx.frames) {
-                mark_object(frame.closure);
-            }
-            for (Upvalue* upvalue : thread->ctx.open_upvalues) {
-                mark_object(upvalue);
+            if (thread->state != GreenThread::State::Finished) {
+                for (size_t i = 0; i < thread->ctx.stack_size; i++) {
+                    mark_value(thread->ctx.stack[i]);
+                }
+                for (const CallFrame &frame : thread->ctx.frames) {
+                    mark_object(frame.closure);
+                }
+                for (Upvalue* upvalue : thread->ctx.open_upvalues) {
+                    mark_object(upvalue);
+                }
             }
             for (GreenThread* joiner : thread->joiners) {
                 mark_object(joiner);
@@ -191,6 +205,7 @@ void Heap::blacken_object(Object* obj) {
                 mark_object(child);
             }
             mark_value(thread->pending_value);
+            mark_value(thread->return_value);
             if (thread->active_select) {
                 for (const auto &select_case : thread->active_select->cases) {
                     mark_object(select_case.pipe);

@@ -1,0 +1,20 @@
+let l = listen("tcp", { port: 8080 });
+
+let t = spawn {
+    let c = connect("tcp", { host: "127.0.0.1", port: 8080 });
+
+    let acc = 0;
+    while true {
+        c.write("Hello from " + thread_id() + ". acc = " + acc + ".\n");
+        acc += 1;
+
+        sleep(1000);
+    }
+};
+
+let conn = l.accept();
+
+while true {
+    let data = conn.read_line().str().trim();
+    disp "[thread " + thread_id() + "] Received: " + data;
+}

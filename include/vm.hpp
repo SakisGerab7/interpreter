@@ -5,13 +5,31 @@
 #include "memory.hpp"
 
 struct VM {
-    std::unordered_map<std::string, Value> globals;
+    struct NativeSignature {
+        std::string name;
+        int arity;
 
-    Heap* heap;
+        bool operator==(const NativeSignature &other) const {
+            return name == other.name && arity == other.arity;
+        }
+    };
+
+    struct NativeSignatureHash {
+        size_t operator()(const NativeSignature &sig) const {
+            size_t h1 = std::hash<std::string>{}(sig.name);
+            size_t h2 = std::hash<int>{}(sig.arity);
+            return h1 ^ (h2 << 1);
+        }
+    };
+
+    std::unordered_map<std::string, Value> globals;
+    std::unordered_map<NativeSignature, NativeFn, NativeSignatureHash> native_registry;
+
+    Heap* heap = nullptr;
 
     Scheduler scheduler;
-    GreenThread* current_thread;
-    GreenThread* main_thread;
+    GreenThread* current_thread = nullptr;
+    GreenThread* main_thread = nullptr;
 
     Value cli_arguments;
 
@@ -24,12 +42,16 @@ struct VM {
     uint64_t total_instructions = 0;
     uint64_t total_time_ns = 0;
 
-    VM(const std::vector<std::string> &args = {}, Heap* heap_ptr = nullptr);
+    VM(const std::vector<std::string> &args = {}, Heap* heap_ptr = nullptr, bool initialize_runtime = true);
+    static std::unique_ptr<VM> create(const std::vector<std::string> &args = {}, Heap* heap_ptr = nullptr);
+    static std::unique_ptr<VM> load(const std::string &state_file, Heap* heap_ptr, const std::vector<std::string> &args = {});
 
     void spawn_thread(Closure* closure, size_t thread_count);
 
     Value interpret(Function* func);
+    Value resume();
 
+    NativeFn resolve_native(const std::string &name, int arity) const;
     void define_native(const std::string &name, int arity, NativeFn func);
 
     void bind_native_method(const Value &obj, const std::string &method_name);

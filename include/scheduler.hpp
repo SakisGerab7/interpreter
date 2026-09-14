@@ -7,6 +7,12 @@
 
 struct VM; // Forward declaration
 
+void set_non_blocking(int fd);
+void set_blocking(int fd);
+
+void set_tcp_listener_options(int fd);
+void set_tcp_stream_options(int fd);
+
 struct Scheduler {
     VM &vm;
 
@@ -27,8 +33,8 @@ struct Scheduler {
     // I/O state
     std::unique_ptr<IOPoller> io_poller;
 
-    Scheduler(VM &vm_ref) : vm(vm_ref), io_poller(std::make_unique<SelectPoller>()) {}
-    // Scheduler(VM &vm_ref) : vm(vm_ref), io_poller(std::make_unique<EpollPoller>()) {}
+    // Scheduler(VM &vm_ref) : vm(vm_ref), io_poller(std::make_unique<SelectPoller>()) {}
+    Scheduler(VM &vm_ref) : vm(vm_ref), io_poller(std::make_unique<EpollPoller>()) {}
 
     // Thread management
     void enqueue(GreenThread* thread);
@@ -48,7 +54,7 @@ struct Scheduler {
     IOHandle* stdout_handle();
 
     // I/O operations
-    IOHandle* file_open(const std::string &path, const std::string &mode);
+    IOHandle* file_open(const std::string &path, const std::string &mode, off_t offset = 0);
 
     // Socket operations
     IOHandle* socket_unix_listener(const std::string &path);
@@ -65,6 +71,8 @@ struct Scheduler {
     Value io_accept(IOHandle* handle);
     void io_close(IOHandle* handle);
 
+    void drain_bytes(IOHandle* handle);
+
     void complete_connects(IOHandle* handle);
     void complete_reads(IOHandle* handle);
     void complete_writes(IOHandle* handle);
@@ -73,7 +81,6 @@ struct Scheduler {
     void complete_read_num_bytes(IOHandle* handle, const IOOperation &pending_read);
     void complete_read_until_delimiter(IOHandle* handle, const IOOperation &pending_read);
     void complete_read_all(IOHandle* handle, const IOOperation &pending_read);
-    void complete_write(IOHandle* handle, IOOperation &pending_write);
     void complete_accept(IOHandle* handle, const IOOperation &pending_accept);
 
     // Socket event polling

@@ -1,6 +1,5 @@
 fn producer(interval) {
-    let p = pipe(-1);
-
+    let p = pipe(0);
     spawn {
         for let i = 0; i < 10; i++ {
             p <- i;
@@ -19,14 +18,10 @@ let p2 = producer(500);
 while p1 || p2 {
     select {
         let v1 = <-p1 {
-            if v1 != null {
-                disp "Received from p1: " + v1;
-            }
+            if v1 != null { disp "Received from p1: " + v1; }
         }
         let v2 = <-p2 {
-            if v2 != null {
-                disp "Received from p2: " + v2;
-            }
+            if v2 != null { disp "Received from p2: " + v2; }
         }
     }
 }

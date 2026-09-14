@@ -78,6 +78,7 @@ struct GreenThread : public Object {
     std::string type_name() const override { return "Thread"; }
     std::string to_string() const override { return "<thread " + std::to_string(ID) + ">"; }
     bool is_truthy() const override { return true; }
-    void serialize(Serializer& serializer) override { serializer.print_thread(this); }
     size_t object_size() const override;
+
+    SERDE(thread)
 };

@@ -1,7 +1,6 @@
 #pragma once
 
 #include "common.hpp"
-#include "token.hpp"
 
 struct Object;
 struct Function;

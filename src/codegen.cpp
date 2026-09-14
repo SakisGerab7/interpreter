@@ -940,7 +940,7 @@ void Codegen::generate_ternary(const TernaryExpr &expr) {
     generate(*expr.left);           // push true branch
     int jump_end = emit_jump(OP_JUMP);
     patch_jump(jump_else);
-    
+
     emit(OP_POP);           // pop condition
     generate(*expr.right);          // push false branch
     patch_jump(jump_end);
@@ -992,7 +992,7 @@ void Codegen::generate_spawn(const SpawnExpr &expr) {
     auto finished_func = end_function();
 
     emit_closure(finished_func, nested_upvalues);
-    
+
     if (expr.count) {
         generate(*expr.count);
     } else {
@@ -1005,19 +1005,19 @@ void Codegen::generate_spawn(const SpawnExpr &expr) {
 void Codegen::disassemble_function(Function* func) {
     std::cout << "\n== " << func->name << " ==\n";
     std::cout << "Arity: " << func->arity << ", Upvalues: " << func->upvalue_count << "\n";
-    
+
     const auto &code = func->chunk.code;
     const auto &constants = func->chunk.constants;
-    
+
     for (size_t i = 0; i < code.size(); ) {
         printf("%04zu ", i);
-        
+
         OpCode op = static_cast<OpCode>(code[i]);
         std::string op_name = opcode_to_string(op);
-        
+
         std::cout << op_name;
         i++;
-        
+
         // Print operands based on opcode type
         switch (op) {
             case OP_CONST:
@@ -1053,8 +1053,8 @@ void Codegen::disassemble_function(Function* func) {
                             if (i + 2 < code.size()) {
                                 uint8_t is_local = code[i + 2];
                                 uint8_t index = code[i + 3];
-                                std::cout << "\n    Upvalue " << j << ": " 
-                                          << (is_local ? "local" : "upvalue") 
+                                std::cout << "\n    Upvalue " << j << ": "
+                                          << (is_local ? "local" : "upvalue")
                                           << " index " << static_cast<int>(index);
                                 i += 2;
                             }
@@ -1108,7 +1108,7 @@ void Codegen::disassemble_function(Function* func) {
             default:
                 break;
         }
-        
+
         std::cout << "\n";
     }
 

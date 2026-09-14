@@ -1,4 +1,6 @@
-let f = open("tmp/file_stream_lines_test.txt", "r");
+//let f = open("tmp/file_stream_lines_test.txt", "r");
+
+let f = stdin;
 
 disp "file fd = " + f.fd;
 

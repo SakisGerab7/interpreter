@@ -1,0 +1,110 @@
+let TYPE_JOIN = 1;
+let TYPE_CHAT = 2;
+let TYPE_LEAVE = 3;
+
+struct Message {
+    fn init(type, username, timestamp, message) {
+        self.type = type;
+        self.username = username;
+        self.timestamp = timestamp;
+        self.message = message;
+    }
+
+    fn encode() {
+        let payload = pack(self.type, "u8") +
+                      pack(len(self.username), "u16") + self.username.bytes() +
+                      pack(self.timestamp, "i32");
+
+        if self.type == TYPE_CHAT {
+            payload += pack(len(self.message), "u32") + self.message.bytes();
+        }
+
+        return payload;
+    }
+}
+
+struct Client {
+    fn init(conn, username) {
+        self.conn = conn;
+        self.username = username;
+    }
+}
+
+let clients = [];
+
+fn send_message(conn, message) {
+    conn.write(message.encode());
+}
+
+fn recv_message(conn) {
+    let type = unpack(conn.read(1), "u8");
+    let name_len = unpack(conn.read(2), "u16");
+    let username = conn.read(name_len).str();
+    let timestamp = unpack(conn.read(4), "i32");
+    let message = "";
+    if type == TYPE_CHAT {
+        let msg_len = unpack(conn.read(4), "u32");
+        message = conn.read(msg_len).str();
+    }
+
+    return Message(type, username, timestamp, message);
+}
+
+fn broadcast(message, sender) {
+    for let i = 0; i < len(clients); i++ {
+        if clients[i].conn != sender {
+            send_message(clients[i].conn, message);
+        }
+    }
+}
+
+fn handle_connection(conn) {
+    conn.write("USERNAME");
+
+    let name_len = unpack(conn.read(2), "u16");
+    let username = conn.read(name_len).str();
+    clients.push(Client(conn, username));
+
+    disp "New connection: " + username;// + " (connections = " + clients.map(fn(c) -> c.username) + ")";
+
+    let join_msg = Message(TYPE_JOIN, username, clock(), "");
+    broadcast(join_msg, null);
+
+    let running = true;
+    while running {
+        let new_msg = recv_message(conn);
+        if new_msg.type == TYPE_CHAT {
+            new_msg.username = username;
+            new_msg.timestamp = clock();
+            broadcast(new_msg, conn);
+
+            disp "New message from " + username + ": " + new_msg.message;
+        } else if new_msg.type == TYPE_LEAVE {
+            running = false;
+        }
+    }
+
+    let new_clients = [];
+    for let i = 0; i < len(clients); i++ {
+        if !(clients[i].conn == conn && clients[i].username == username) {
+            new_clients.push(clients[i]);
+        }
+    }
+
+    clients = new_clients;
+
+    disp "New disconnection: " + username;// + " (connections = " + clients.map(fn(c) -> c.username) + ")";
+
+    conn.close_();
+    conn = null;
+
+    let leave_msg = Message(TYPE_LEAVE, username, clock(), "");
+    broadcast(leave_msg, null);
+}
+
+let l = listen("tcp", { port: 5555 });
+
+while true {
+    let conn = l.accept();
+    spawn { handle_connection(conn); };
+}

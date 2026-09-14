@@ -1,0 +1,90 @@
+let TYPE_JOIN = 1;
+let TYPE_CHAT = 2;
+let TYPE_LEAVE = 3;
+
+struct Message {
+    fn init(type, username, timestamp, message) {
+        self.type = type;
+        self.username = username;
+        self.timestamp = timestamp;
+        self.message = message;
+    }
+
+    fn encode() {
+        let payload = pack(self.type, "u8") +
+                      pack(len(self.username), "u16") + self.username.bytes() +
+                      pack(self.timestamp, "i32");
+
+        if self.type == TYPE_CHAT {
+            payload += pack(len(self.message), "u32") + self.message.bytes();
+        }
+
+        return payload;
+    }
+}
+
+fn send_message(conn, message) {
+    conn.write(message.encode());
+}
+
+fn recv_message(conn) {
+    let type = unpack(conn.read(1), "u8");
+    let name_len = unpack(conn.read(2), "u16");
+    let username = conn.read(name_len).str();
+    let timestamp = unpack(conn.read(4), "i32");
+    let message = "";
+    if type == TYPE_CHAT {
+        let msg_len = unpack(conn.read(4), "u32");
+        message = conn.read(msg_len).str();
+    }
+
+    return Message(type, username, timestamp, message);
+}
+
+fn recv_messages(conn) {
+    for ;; {
+        let new_msg = recv_message(conn);
+        if new_msg.type == TYPE_JOIN {
+            disp "[" + new_msg.timestamp + "] * " + new_msg.username + " joined the chat *";
+        } else if new_msg.type == TYPE_CHAT {
+            disp "[" + new_msg.timestamp + "] " + new_msg.username + ": " + new_msg.message;
+        } else if new_msg.type == TYPE_LEAVE {
+            disp "[" + new_msg.timestamp + "] * " + new_msg.username + " left the chat *";
+        }
+    }
+}
+
+let username = cli_args()[1];
+if len(username) > 32 {
+    return 1;
+}
+
+let conn = connect("tcp", { host: "127.0.0.1", port: 5555 });
+
+let prompt = conn.read(8).str();
+if prompt != "USERNAME" {
+    return 1;
+}
+
+let username_payload = pack(len(username), "u16") + username.bytes();
+conn.write(username_payload);
+
+let receiver = spawn { recv_messages(conn); };
+receiver.detach();
+
+let running = true;
+while running {
+    let message = stdin.read_line().str().trim();
+    if message != null {
+        if message == "!q" {
+            let leave_msg = Message(TYPE_LEAVE, username, 0, "");
+            send_message(conn, leave_msg);
+            running = false;
+        } else {
+            let chat_msg = Message(TYPE_CHAT, username, 0, message);
+            send_message(conn, chat_msg);
+        }
+    }
+}
+
+conn.close_();

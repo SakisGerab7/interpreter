@@ -1,4 +1,7 @@
+#include "value.hpp"
 #include "vm.hpp"
+#include <iostream>
+#include <vector>
 #include "native_functions.hpp"
 
 namespace native_functions {
@@ -66,6 +69,8 @@ namespace native_functions {
             return static_cast<int>(args[0].as_record()->size());
         if (args[0].is_string())
             return static_cast<int>(args[0].as_string().size());
+        if (args[0].is_byte_array())
+            return static_cast<int>(args[0].as_byte_array()->size());
 
         return {};
     }
@@ -75,6 +80,9 @@ namespace native_functions {
     }
 
     Value int_fn(VM &, const std::vector<Value> &args) {
+        if (args[0].is_string()) {
+            return std::stoi(args[0].as_string());
+        }
         return args[0].as_int();
     }
 
@@ -239,12 +247,9 @@ namespace native_functions {
     }
 
     namespace array {
-        static Value invoke_unary_callback(VM &vm, const Value &callback, const Value &arg) {
+        static Value invoke_unary_callback(VM &vm, const Value &callback, const std::vector<Value> &args) {
             if (callback.is_native()) {
                 auto native = callback.as_native();
-                if (native->arity != 1) {
-                    throw std::runtime_error("Callback must take exactly 1 argument");
-                }
 
                 std::vector<Value> call_args;
                 if (!native->bound_instance.is_null()) {
@@ -252,7 +257,7 @@ namespace native_functions {
                     native->bound_instance = {};
                 }
 
-                call_args.push_back(arg);
+                call_args.insert(call_args.end(), args.begin(), args.end());
                 return native->func(vm, call_args);
             }
 
@@ -268,13 +273,17 @@ namespace native_functions {
             auto closure = closure_value.as_closure();
 
             auto parent_thread = vm.current_thread;
-            auto callback_thread = vm.heap->allocate<GreenThread>(vm.scheduler.next_thread_id++);
+            auto callback_thread = vm.heap->allocate<GreenThread>(-1);
             callback_thread->state = GreenThread::Running;
-            vm.push(closure);
-            vm.push(arg);
 
             vm.current_thread = callback_thread;
-            vm.call(closure, 1);
+
+            vm.push(closure);
+            for (const auto &arg : args) {
+                vm.push(arg);
+            }
+
+            vm.call(closure, static_cast<int>(args.size()));
 
             try {
                 vm.run();
@@ -363,9 +372,13 @@ namespace native_functions {
             auto arr = args[0].as_array();
             auto callback = args[1];
 
+            vm.heap->active_vm = nullptr;
+
             for (const auto &elem : arr->elements) {
-                invoke_unary_callback(vm, callback, elem);
+                invoke_unary_callback(vm, callback, { elem });
             }
+
+            vm.heap->active_vm = &vm;
 
             return {};
         }
@@ -374,12 +387,32 @@ namespace native_functions {
             auto arr = args[0].as_array();
             auto callback = args[1];
 
+            vm.heap->active_vm = nullptr;
+
             std::vector<Value> mapped_elements;
             for (const auto &elem : arr->elements) {
-                mapped_elements.push_back(invoke_unary_callback(vm, callback, elem));
+                mapped_elements.push_back(invoke_unary_callback(vm, callback, { elem }));
             }
 
+            vm.heap->active_vm = &vm;
+
             return vm.heap->allocate<Array>(mapped_elements);
+        }
+
+        Value reduce(VM &vm, const std::vector<Value> &args) {
+            auto arr = args[0].as_array();
+            auto callback = args[1];
+            Value accumulator = args[2];
+
+            vm.heap->active_vm = nullptr;
+
+            for (const auto &elem : arr->elements) {
+                accumulator = invoke_unary_callback(vm, callback, { accumulator, elem });
+            }
+
+            vm.heap->active_vm = &vm;
+
+            return accumulator;
         }
     }
 

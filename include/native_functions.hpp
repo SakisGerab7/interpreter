@@ -36,7 +36,7 @@ namespace native_functions {
         Value ln(VM &, const std::vector<Value> &args);
         Value exp(VM &, const std::vector<Value> &args);
     }
-    
+
     namespace string {
         Value to_upper(VM &vm, const std::vector<Value> &args);
         Value to_lower(VM &vm, const std::vector<Value> &args);
@@ -44,11 +44,11 @@ namespace native_functions {
         Value split(VM &vm, const std::vector<Value> &args);
         Value to_byte_array(VM &vm, const std::vector<Value> &args);
     }
-    
+
     namespace byte_array {
         Value to_string(VM &vm, const std::vector<Value> &args);
     }
-    
+
     namespace array {
         Value arange(VM &vm, const std::vector<Value> &args);
         Value push(VM &vm, const std::vector<Value> &args);
@@ -59,6 +59,7 @@ namespace native_functions {
         Value sum(VM &vm, const std::vector<Value> &args);
         Value foreach(VM &vm, const std::vector<Value> &args);
         Value map(VM &vm, const std::vector<Value> &args);
+        Value reduce(VM &vm, const std::vector<Value> &args);
     }
 
     Value sleep(VM &vm, const std::vector<Value> &args);

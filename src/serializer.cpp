@@ -1,8 +1,14 @@
 #include "green_thread.hpp"
+#include "io_handler.hpp"
 #include "value.hpp"
 #include "serializer.hpp"
 #include "runtime.hpp"
 #include "vm.hpp"
+#include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <sys/types.h>
+#include <unistd.h>
 
 void JsonSerializer::print_vm(const VM &vm) {
     // print all visited objects
@@ -102,10 +108,8 @@ void JsonSerializer::print_vm(const VM &vm) {
 
 void BinarySerializer::print_vm(const VM& vm) {
     // print all visited objects
-
-    const char magic_word[] = "dog:vm-state";
-
-    print_buffer(magic_word, sizeof(magic_word));
+    constexpr std::string_view magic_word = "dog:vm-state";
+    print_buffer(magic_word.data(), magic_word.size());
 
     if (vm.heap->next_id - 1 <= UINT8_MAX) {
         id_size = 1;
@@ -117,7 +121,20 @@ void BinarySerializer::print_vm(const VM& vm) {
         id_size = 8;
     }
 
+    print_number<uint8_t>(id_size);
+
+    print_number(vm.heap->free_ids.size());
+
+    for (auto id : vm.heap->free_ids) {
+        print_number<size_t>(id);
+    }
+
     print_number<size_t>(vm.heap->objects.size());
+
+    for (auto obj : vm.heap->objects) {
+        print_id(obj->id);
+        print_number(static_cast<uint8_t>(obj->type));
+    }
 
     for (auto obj : vm.heap->objects) {
         print_id(obj->id);
@@ -204,22 +221,17 @@ void JsonSerializer::print_value(const Value &val) {
 // H = i/o handle
 //
 void BinarySerializer::print_value(const Value &val) {
-    if (val.is_null()) {
-        out.write("n", 1);
-    } else if (val.is_int()) {
-        out.write("i", 1);
+    print_number<uint8_t>(val.data.index());
+
+    if (val.is_int()) {
         print_number<int>(val.as_int());
     } else if (val.is_float()) {
-        out.write("f", 1);
         print_number<double>(val.as_float());
     } else if (val.is_bool()) {
-        out.write("b", 1);
         print_number<bool>(val.as_bool());
     } else if (val.is_string()) {
-        out.write("s", 1);
         print_string(val.as_string());
     } else if (val.is_object()) {
-        out.write("o", 1);
         print_id(val.as_object()->id);
     }
 }
@@ -255,8 +267,6 @@ void JsonSerializer::print_function(Function* func) {
 }
 
 void BinarySerializer::print_function(Function* func) {
-    out.write("F", 1);
-
     print_string(func->name);
     print_number<size_t>(func->arity);
     print_number<size_t>(func->upvalue_count);
@@ -284,8 +294,6 @@ void JsonSerializer::print_native(Native* native) {
 }
 
 void BinarySerializer::print_native(Native* native) {
-    out.write("N", 1);
-
     print_string(native->name);
     print_number<size_t>(native->arity);
     print_value(native->bound_instance);
@@ -309,8 +317,6 @@ void JsonSerializer::print_closure(Closure* closure) {
 }
 
 void BinarySerializer::print_closure(Closure* closure) {
-    out.write("C", 1);
-
     print_id(closure->func->id);
     print_number<size_t>(closure->upvalues.size());
 
@@ -328,8 +334,6 @@ void JsonSerializer::print_method_closure(MethodClosure* method_closure) {
 }
 
 void BinarySerializer::print_method_closure(MethodClosure* method_closure) {
-    out.write("M", 1);
-
     print_id(method_closure->closure->id);
     print_value(method_closure->self);
 }
@@ -344,9 +348,7 @@ void JsonSerializer::print_upvalue(Upvalue* upvalue) {
 }
 
 void BinarySerializer::print_upvalue(Upvalue* upvalue) {
-    out.write("U", 1);
-
-    print_id(upvalue->owner_thread ? -1 : upvalue->owner_thread->id);
+    print_id(upvalue->owner_thread ? upvalue->owner_thread->id : 0);
     print_number<int>(upvalue->slot_index);
     print_value(upvalue->closed);
 }
@@ -367,8 +369,6 @@ void JsonSerializer::print_array(Array* array) {
 }
 
 void BinarySerializer::print_array(Array* array) {
-    out.write("A", 1);
-
     print_number<size_t>(array->size());
 
     for (size_t i = 0; i < array->size(); i++) {
@@ -393,8 +393,6 @@ void JsonSerializer::print_record(Record* record) {
 }
 
 void BinarySerializer::print_record(Record* record) {
-    out.write("R", 1);
-
     print_number<size_t>(record->size());
 
     for (size_t i = 0; i < record->size(); i++) {
@@ -415,8 +413,6 @@ void JsonSerializer::print_byte_array(ByteArray* byte_array) {
 }
 
 void BinarySerializer::print_byte_array(ByteArray* byte_array) {
-    out.write("B", 1);
-
     print_number<size_t>(byte_array->size());
     print_buffer(reinterpret_cast<const char*>(byte_array->data.data()), byte_array->size());
 }
@@ -439,8 +435,6 @@ void JsonSerializer::print_struct(Struct* strct) {
 }
 
 void BinarySerializer::print_struct(Struct* strct) {
-    out.write("S", 1);
-
     print_string(strct->name);
 
     print_number<size_t>(strct->methods.size());
@@ -470,9 +464,7 @@ void JsonSerializer::print_struct_instance(StructInstance* instance) {
 }
 
 void BinarySerializer::print_struct_instance(StructInstance* instance) {
-    out.write("I", 1);
-
-    print_id(instance->id);
+    print_id(instance->struct_ptr->id);
 
     print_number<size_t>(instance->fields.size());
 
@@ -563,7 +555,7 @@ void JsonSerializer::print_thread(GreenThread* thread) {
     {
         IndentGuard guard(indent_level);
         out << indent() << "\"stack\": [\n";
-        {
+        if (thread->state != GreenThread::Finished) {
             IndentGuard guard(indent_level);
             for (size_t i = 0; i < thread->ctx.stack_size; i++) {
                 out << indent();
@@ -574,7 +566,7 @@ void JsonSerializer::print_thread(GreenThread* thread) {
         }
         out << indent() << "],\n";
         out << indent() << "\"callframes\": [\n";
-        {
+        if (thread->state != GreenThread::Finished) {
             IndentGuard guard(indent_level);
             for (size_t i = 0; i < thread->ctx.frames.size(); i++) {
                 const CallFrame& frame = thread->ctx.frames[i];
@@ -590,9 +582,11 @@ void JsonSerializer::print_thread(GreenThread* thread) {
         }
         out << indent() << "],\n";
         out << indent() << "\"open_upvalue_ids\": [";
-        for (size_t i = 0; i < thread->ctx.open_upvalues.size(); i++) {
-            out << thread->ctx.open_upvalues[i]->id;
-            if (i < thread->ctx.open_upvalues.size() - 1) out << ",";
+        if (thread->state != GreenThread::Finished) {
+            for (size_t i = 0; i < thread->ctx.open_upvalues.size(); i++) {
+                out << thread->ctx.open_upvalues[i]->id;
+                if (i < thread->ctx.open_upvalues.size() - 1) out << ",";
+            }
         }
         out << "]\n";
     }
@@ -600,8 +594,6 @@ void JsonSerializer::print_thread(GreenThread* thread) {
 }
 
 void BinarySerializer::print_thread(GreenThread* thread) {
-    out.write("T", 1);
-
     print_id(thread->ID);
     print_number<uint8_t>(thread->state);
 
@@ -655,37 +647,44 @@ void BinarySerializer::print_thread(GreenThread* thread) {
         }
     }
 
+    if (thread->state != GreenThread::Finished) {
+        print_number<size_t>(thread->ctx.stack_size);
+        for (size_t i = 0; i < thread->ctx.stack_size; i++) {
+            print_value(thread->ctx.stack[i]);
+        }
 
-    print_number<size_t>(thread->ctx.stack_size);
-    for (size_t i = 0; i < thread->ctx.stack_size; i++) {
-        print_value(thread->ctx.stack[i]);
-    }
+        print_number<size_t>(thread->ctx.frames.size());
+        for (size_t i = 0; i < thread->ctx.frames.size(); i++) {
+            const auto& frame = thread->ctx.frames[i];
+            print_id(frame.closure->id);
+            print_number<int>(frame.base);
+            print_number<int>(frame.ip);
+        }
 
-    print_number<size_t>(thread->ctx.frames.size());
-    for (size_t i = 0; i < thread->ctx.frames.size(); i++) {
-        const auto& frame = thread->ctx.frames[i];
-        print_id(frame.closure->id);
-        print_number<int>(frame.base);
-        print_number<int>(frame.ip);
-    }
-
-    print_number<size_t>(thread->ctx.open_upvalues.size());
-    for (size_t i = 0; i < thread->ctx.open_upvalues.size(); i++) {
-        print_id(thread->ctx.open_upvalues[i]->id);
+        print_number<size_t>(thread->ctx.open_upvalues.size());
+        for (size_t i = 0; i < thread->ctx.open_upvalues.size(); i++) {
+            print_id(thread->ctx.open_upvalues[i]->id);
+        }
+    } else {
+        print_number<size_t>(0);
+        print_number<size_t>(0);
+        print_number<size_t>(0);
     }
 }
 
 void JsonSerializer::print_io_handle(IOHandle* handle) {
     out << indent() << "\"type\": \"IOHandle\",\n";
     out << indent() << "\"kind\": " << static_cast<int>(handle->kind) << ",\n";
-    out << indent() << "\"fd\": " << handle->fd << ",\n";
     out << indent() << "\"closed\": " << (handle->closed ? "true" : "false") << ",\n";
     out << indent() << "\"read_interest\": " << (handle->read_interest ? "true" : "false") << ",\n";
     out << indent() << "\"write_interest\": " << (handle->write_interest ? "true" : "false") << ",\n";
     out << indent() << "\"metadata\": {\n";
     {
         IndentGuard guard(indent_level);
+        off_t offset = lseek(handle->fd, 0, SEEK_CUR);
         out << indent() << "\"path\": \"" << handle->metadata.path << "\",\n";
+        out << indent() << "\"mode\": \"" << handle->metadata.mode << "\",\n";
+        out << indent() << "\"offset\": " << offset << ",\n";
         out << indent() << "\"local_address\": \"" << handle->metadata.local_address << "\",\n";
         out << indent() << "\"remote_address\": \"" << handle->metadata.remote_address << "\"\n";
     }
@@ -703,7 +702,7 @@ void JsonSerializer::print_io_handle(IOHandle* handle) {
                     out << indent() << "\"type\": " << static_cast<int>(op.type) << ",\n";
                     out << indent() << "\"thread_id\": " << (op.thread ? std::to_string(op.thread->id) : "null") << ",\n";
                     out << indent() << "\"nbytes\": ";
-                    if (op.type == IOOperation::Type::ReadNumBytes) {
+                    if (op.type == IOOperation::Type::ReadNumBytes || op.type == IOOperation::Type::Write) {
                         out << op.nbytes;
                     } else {
                         out << "null";
@@ -714,19 +713,6 @@ void JsonSerializer::print_io_handle(IOHandle* handle) {
                         out << static_cast<int>(op.delimiter);
                     } else {
                         out << "null";
-                    }
-                    out << ",\n";
-                    out << indent() << "\"write_progress\": ";
-                    if (op.type == IOOperation::Type::Write) {
-                        out << op.write_progress;
-                    } else {
-                        out << "null";
-                    }
-                    out << ",\n";
-                    out << indent() << "\"write_buffer\": [";
-                    for (size_t i = 0; i < op.write_bytes.size(); i++) {
-                        out << static_cast<int>(op.write_bytes[i]);
-                        if (i < op.write_bytes.size() - 1) out << ", ";
                     }
                     out << "\n";
                 }
@@ -743,24 +729,31 @@ void JsonSerializer::print_io_handle(IOHandle* handle) {
     print_ops("accepts", handle->accepts);
     print_ops("connects", handle->connects);
 
+    out << indent() << "\"write_buffer\": [";
+    for (size_t i = 0; i < handle->write_buffer.size(); i++) {
+        out << static_cast<int>(handle->write_buffer[i]);
+        if (i < handle->write_buffer.size() - 1) out << ", ";
+    }
+    out << "],\n";
     out << indent() << "\"read_buffer\": [";
     for (size_t i = 0; i < handle->read_buffer.size(); i++) {
         out << static_cast<int>(handle->read_buffer[i]);
         if (i < handle->read_buffer.size() - 1) out << ", ";
     }
-    out << "]\n";
+    out << "],\n";
+    out << indent() << "\"eof_reached\": " << std::boolalpha << handle->eof_reached << "\n";
 }
 
 void BinarySerializer::print_io_handle(IOHandle* handle) {
-    out.write("H", 1);
-
     print_number<uint8_t>(static_cast<uint8_t>(handle->kind));
-    print_number<int>(handle->fd);
     print_number<bool>(handle->closed);
     print_number<bool>(handle->read_interest);
     print_number<bool>(handle->write_interest);
 
+    off_t offset = lseek(handle->fd, 0, SEEK_CUR);
     print_string(handle->metadata.path);
+    print_string(handle->metadata.mode);
+    print_number<off_t>(offset);
     print_string(handle->metadata.local_address);
     print_string(handle->metadata.remote_address);
 
@@ -775,17 +768,11 @@ void BinarySerializer::print_io_handle(IOHandle* handle) {
             }
             switch (op.type) {
                 case IOOperation::Type::ReadNumBytes:
+                case IOOperation::Type::Write:
                     print_number<size_t>(op.nbytes);
                     break;
                 case IOOperation::Type::ReadUntilDelimiter:
                     print_number<uint8_t>(op.delimiter);
-                    break;
-                case IOOperation::Type::Write:
-                    print_number<size_t>(op.write_progress);
-                    print_number<size_t>(op.write_bytes.size());
-                    if (!op.write_bytes.empty()) {
-                        print_buffer(reinterpret_cast<const char*>(op.write_bytes.data()), op.write_bytes.size());
-                    }
                     break;
                 case IOOperation::Type::ReadAll:
                 case IOOperation::Type::Connect:
@@ -800,10 +787,17 @@ void BinarySerializer::print_io_handle(IOHandle* handle) {
     print_ops(handle->accepts);
     print_ops(handle->connects);
 
+    print_number<size_t>(handle->write_buffer.size());
+    if (!handle->write_buffer.empty()) {
+        print_buffer(reinterpret_cast<const char*>(handle->write_buffer.data()), handle->write_buffer.size());
+    }
+
     print_number<size_t>(handle->read_buffer.size());
     if (!handle->read_buffer.empty()) {
         print_buffer(reinterpret_cast<const char*>(handle->read_buffer.data()), handle->read_buffer.size());
     }
+
+    print_number<bool>(handle->eof_reached);
 }
 
 void JsonSerializer::print_pipe(Pipe* pipe) {
@@ -843,7 +837,6 @@ void JsonSerializer::print_pipe(Pipe* pipe) {
 }
 
 void BinarySerializer::print_pipe(Pipe* pipe) {
-    out.write("P", 1);
     print_id(pipe->ID);
     print_number<size_t>(pipe->capacity);
     print_number<bool>(pipe->closed);

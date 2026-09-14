@@ -1,4 +1,10 @@
-.vscode
+.vscode/
+.cache/
+
 tmp/
 build/
+benchmarks/
+
 *.log
+*.snapshot
+*.json

@@ -2,7 +2,6 @@
 
 #include "green_thread.hpp"
 #include "value.hpp"
-#include <cstddef>
 
 struct IOOperation {
     enum Type {
@@ -16,11 +15,8 @@ struct IOOperation {
 
     GreenThread* thread; // the thread that initiated this I/O operation
 
-    size_t nbytes; // for ReadNumBytes operations
+    size_t nbytes; // for ReadNumBytes and Write operations
     uint8_t delimiter; // for ReadUntilDelimiter operations
-
-    std::vector<uint8_t> write_bytes;
-    size_t write_progress = 0;
 };
 
 
@@ -43,6 +39,7 @@ struct IOHandle : public Object {
 
     struct Metadata {
         std::string path;           // for file streams and UNIX socket listeners/streams
+        std::string mode;           // for file streams
         std::string local_address;  // for TCP listeners/streams
         std::string remote_address; // for TCP streams
     } metadata;
@@ -54,7 +51,9 @@ struct IOHandle : public Object {
     std::deque<IOOperation> connects; // for streams in the process of connecting
 
     // Buffer for partial reads
+    std::vector<uint8_t> write_buffer;
     std::vector<uint8_t> read_buffer;
+    bool eof_reached = false;
 
     IOHandle() : Object(Type::IOHandle) {}
 
@@ -73,10 +72,10 @@ struct IOHandle : public Object {
     std::string type_name() const override { return "IOHandle"; }
     std::string to_string() const override { return "<IOHandle fd=" + std::to_string(fd) + ", kind=" + kind_name() + ">"; }
     bool is_truthy() const override { return !closed; }
-    void serialize(Serializer& serializer) override { serializer.print_io_handle(this); }
     size_t object_size() const override {
         size_t size = sizeof(IOHandle);
         size += metadata.path.capacity() * sizeof(char);
+        size += metadata.mode.capacity() * sizeof(char);
         size += metadata.local_address.capacity() * sizeof(char);
         size += metadata.remote_address.capacity() * sizeof(char);
         size += read_buffer.capacity() * sizeof(uint8_t);
@@ -86,4 +85,6 @@ struct IOHandle : public Object {
         size += connects.size() * sizeof(IOOperation);
         return size;
     }
+
+    SERDE(io_handle)
 };

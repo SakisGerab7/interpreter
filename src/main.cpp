@@ -1,4 +1,5 @@
 #include "common.hpp"
+#include "deserializer.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "ast_printer.hpp"
@@ -6,6 +7,7 @@
 #include "vm.hpp"
 #include "memory.hpp"
 #include "serializer.hpp"
+#include <iostream>
 
 #define MEM_TRACKING 0
 #if MEM_TRACKING
@@ -108,7 +110,7 @@ void handle_suspend_signal(int) {
     vm_signal::suspend_requested = 1;
 }
 
-int run(std::istream &input, const std::vector<std::string> &args = {}) {
+int run(std::istream &input, const std::vector<std::string> &args = {}, const std::string &snapshot_name = "") {
     using std::chrono::high_resolution_clock;
     using std::chrono::duration_cast;
     using std::chrono::microseconds;
@@ -127,12 +129,12 @@ int run(std::istream &input, const std::vector<std::string> &args = {}) {
 
     // std::cout << "--------------------------------------------\n";
 
-    AstPrinter printer;
-    for (const auto &s : *statements) {
-        std::cout << printer.print(*s) << "\n";
-    }
+    // AstPrinter printer;
+    // for (const auto &s : *statements) {
+    //     std::cout << printer.print(*s) << "\n";
+    // }
 
-    std::cout << "--------------------------------------------\n";
+    // std::cout << "--------------------------------------------\n";
 
     // memtrack::next_phase();
 
@@ -146,7 +148,7 @@ int run(std::istream &input, const std::vector<std::string> &args = {}) {
 
     // memtrack::next_phase();
 
-    VM vm(args, &heap);
+    auto vm = VM::create(args, &heap);
 
     struct sigaction act = {};
     act.sa_handler = handle_suspend_signal;
@@ -155,24 +157,28 @@ int run(std::istream &input, const std::vector<std::string> &args = {}) {
     sigaction(SIGINT, &act, nullptr);
     sigaction(SIGTERM, &act, nullptr);
 
-    Value result = vm.interpret(main_func);
+    Value result = vm->interpret(main_func);
 
     if (vm_signal::suspend_requested) {
         std::cerr << "VM suspended, creating checkpoint image...\n";
-
-        std::ofstream vm_out("vm_state.json");
-        std::ofstream vm_out_bin("vm_state.bin", std::ios::binary);
-
         heap.collect_garbage(); // perform a GC pass to clean up any unreachable objects before traversal
 
-        JsonSerializer serializer(vm_out);
-        serializer.print_vm(vm);
+        std::cerr << "Garbage collected\n";
 
-        // BinarySerializer bserializer(vm_out_bin);
-        // bserializer.print_vm(vm);
+        std::ofstream vm_out("vm_state.json");
+        JsonSerializer serializer(vm_out);
+        serializer.print_vm(*vm);
+        vm_out.flush();
+        vm_out.close();
+
+        std::ofstream vm_out_bin(snapshot_name, std::ios::binary);
+        BinarySerializer bserializer(vm_out_bin);
+        bserializer.print_vm(*vm);
+        vm_out_bin.flush();
+        vm_out_bin.close();
     }
 
-    std::cout << "--------------------------------------------\n";
+    // std::cout << "--------------------------------------------\n";
 
     // memtrack::print_stats();
 
@@ -194,33 +200,57 @@ int run_file(char *filename, const std::vector<std::string> &args) {
         return 1;
     }
 
-    // namespace fs = std::filesystem;
+    // Check if the file extension is .dog
+    std::string extension = std::filesystem::path(filename).extension().string();
+    if (extension != ".dog") {
+        std::cerr << "Error: file extension must be .dog\n";
+        return 1;
+    }
 
-    // auto f_time = fs::last_write_time(filename);
-    // auto s_time = std::chrono::time_point_cast<std::chrono::system_clock::duration>(
-    //     f_time - fs::file_time_type::clock::now() + std::chrono::system_clock::now()
-    // );
+    // For snapshots, replace .dog with .snapshot
+    std::string snapshot_name = std::filesystem::path(filename).replace_extension(".snapshot").string();
 
-    // std::time_t c_time = std::chrono::system_clock::to_time_t(s_time);
+    return run(file, args, snapshot_name);
+}
 
-    // std::stringstream oss;
-    // oss << std::put_time(std::localtime(&c_time), "%Y-%m-%d %H:%M:%S");
+int run_snapshot(char *snapshot_file, const std::vector<std::string> &args) {
+    Heap heap;
+    auto vm = VM::load(snapshot_file, &heap, args);
 
-    // std::cout << "Last time " << filename << " was modified: " << oss.str() << std::endl;
+    struct sigaction act = {};
+    act.sa_handler = handle_suspend_signal;
+    sigemptyset(&act.sa_mask);
 
-    return run(file, args);
+    sigaction(SIGINT, &act, nullptr);
+    sigaction(SIGTERM, &act, nullptr);
+
+    Value result = vm->resume();
+
+    if (result.is_null()) return 0;
+    if (result.is_int()) return result.as_int();
+    return result.is_truthy() ? 0 : 1;
 }
 
 int main(int argc, char **argv) {
     std::srand(std::time(nullptr));
 
     if (argc > 1 && std::string(argv[1]) == "--help") {
-        std::cerr << "Usage: " << argv[0] << " [source file] [args...]\n";
+        std::cerr << "Usage: " << argv[0] << " [source file] [args...]\n"
+                  << "       " << argv[0] << " --snapshot <snapshot file> [args...]\n";
         return 1;
     }
 
     if (argc == 1) {
         return run_prompt();
+    }
+
+    if (std::string(argv[1]) == "--snapshot") {
+        if (argc < 3) {
+            std::cerr << "Error: missing snapshot file path.\n"
+                      << "Usage: " << argv[0] << " --snapshot <snapshot file> [args...]\n";
+            return 1;
+        }
+        return run_snapshot(argv[2], std::vector<std::string>(argv + 3, argv + argc));
     }
 
     return run_file(argv[1], std::vector<std::string>(argv + 1, argv + argc));

@@ -1,11 +1,13 @@
 #include "io_handler.hpp"
 #include "io_poller.hpp"
+#include "value.hpp"
 #include "vm.hpp"
-#include <cstdint>
-#include <vector>
+#include <fcntl.h>
+#include <iostream>
+#include <sys/types.h>
 #include "scheduler.hpp"
 
-static constexpr size_t CHUNK_SIZE = 5;
+static constexpr size_t CHUNK_SIZE = 512;
 
 void Scheduler::enqueue(GreenThread* thread) {
     ready_queue.push_back(thread);
@@ -77,8 +79,8 @@ void Scheduler::sleep_until_ready(const std::chrono::steady_clock::time_point &n
 
 int Scheduler::calculate_poll_timeout(const std::chrono::steady_clock::time_point &now) {
     if (blocked_queue.empty()) {
-        // No sleeping threads, poll indefinitely (or with a reasonable timeout)
-        return 100; // 100ms timeout to stay responsive
+        // No sleeping threads, poll indefinitely
+        return -1;
     }
 
     auto sleep_duration = blocked_queue.top().first - now;
@@ -98,6 +100,17 @@ void set_non_blocking(int fd) {
 
     if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1) {
         throw std::runtime_error("Failed to set file descriptor to non-blocking mode");
+    }
+}
+
+void set_blocking(int fd) {
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags == -1) {
+        throw std::runtime_error("Failed to get file descriptor flags");
+    }
+
+    if (fcntl(fd, F_SETFL, flags & ~O_NONBLOCK) == -1) {
+        throw std::runtime_error("Failed to set file descriptor to blocking mode");
     }
 }
 
@@ -126,11 +139,34 @@ void set_tcp_stream_options(int fd) {
 IOHandle* Scheduler::stdin_handle() {
     set_non_blocking(STDIN_FILENO);
 
+
+    struct stat st;
+    fstat(STDIN_FILENO, &st);
+
+    if (!S_ISREG(st.st_mode)) {
+        auto handle = vm.heap->allocate<IOHandle>();
+        handle->kind = IOHandle::Kind::Stdin;
+        handle->fd = STDIN_FILENO;
+
+        io_poller->add_handle(handle);
+
+        return handle;
+    }
+
     auto handle = vm.heap->allocate<IOHandle>();
-    handle->kind = IOHandle::Kind::Stdin;
+    handle->kind = IOHandle::Kind::File;
     handle->fd = STDIN_FILENO;
 
-    io_poller->add_handle(handle);
+    // char path[1024];
+    // ssize_t len = readlink("/proc/self/fd/0", path, sizeof(path) - 1);
+    // if (len != -1) {
+    //     path[len] = '\0';
+    //     handle->metadata.path = path;
+    // }
+
+    handle->metadata.mode = "r";
+
+    std::cerr << "stdin_handle: path=" << handle->metadata.path << ", mode=" << handle->metadata.mode << std::endl;
 
     return handle;
 }
@@ -138,16 +174,37 @@ IOHandle* Scheduler::stdin_handle() {
 IOHandle* Scheduler::stdout_handle() {
     set_non_blocking(STDOUT_FILENO);
 
+
+    struct stat st;
+    fstat(STDOUT_FILENO, &st);
+
+    if (!S_ISREG(st.st_mode)) {
+        auto handle = vm.heap->allocate<IOHandle>();
+        handle->kind = IOHandle::Kind::Stdout;
+        handle->fd = STDOUT_FILENO;
+
+        io_poller->add_handle(handle);
+
+        return handle;
+    }
+
     auto handle = vm.heap->allocate<IOHandle>();
-    handle->kind = IOHandle::Kind::Stdout;
+    handle->kind = IOHandle::Kind::File;
     handle->fd = STDOUT_FILENO;
 
-    io_poller->add_handle(handle);
+    char path[1024];
+    ssize_t len = readlink("/proc/self/fd/1", path, sizeof(path) - 1);
+    if (len != -1) {
+        path[len] = '\0';
+        handle->metadata.path = path;
+    }
+
+    handle->metadata.mode = "w";
 
     return handle;
 }
 
-IOHandle* Scheduler::file_open(const std::string &path, const std::string &mode) {
+IOHandle* Scheduler::file_open(const std::string &path, const std::string &mode, off_t offset) {
     int flags = 0;
     if (mode == "r") {
         flags = O_RDONLY;
@@ -165,7 +222,14 @@ IOHandle* Scheduler::file_open(const std::string &path, const std::string &mode)
 
     int fd = open(path.c_str(), flags, S_IRWXU);
     if (fd == -1) {
-        throw std::runtime_error("Failed to open file: " + std::string(strerror(errno)));
+        throw std::runtime_error("Failed to open file `" + path + "`: " + std::string(strerror(errno)));
+    }
+
+    if (offset != 0) {
+        if (lseek(fd, offset, SEEK_SET) == static_cast<off_t>(-1)) {
+            close(fd);
+            throw std::runtime_error("Failed to seek file to offset: " + std::string(strerror(errno)));
+        }
     }
 
     set_non_blocking(fd);
@@ -174,8 +238,7 @@ IOHandle* Scheduler::file_open(const std::string &path, const std::string &mode)
     handle->kind = IOHandle::Kind::File;
     handle->fd = fd;
     handle->metadata.path = path;
-
-    io_poller->add_handle(handle);
+    handle->metadata.mode = mode;
 
     return handle;
 }
@@ -238,6 +301,7 @@ IOHandle* Scheduler::socket_unix_connection(const std::string &path) {
 
     // Create a IOHandler object and add it to the scheduler's I/O handler map
     auto handle = vm.heap->allocate<IOHandle>();
+    vm.heap->connections++;
     handle->kind = IOHandle::Kind::StreamUnix;
     handle->fd = fd;
     handle->metadata.path = path;
@@ -340,6 +404,7 @@ IOHandle* Scheduler::socket_tcp_connection(const std::string &address, uint16_t 
 
     // Create a IOHandle object and add it to the scheduler's I/O handler map
     auto handle = vm.heap->allocate<IOHandle>();
+    vm.heap->connections++;
     handle->kind = IOHandle::Kind::StreamTCP;
     handle->fd = fd;
     handle->metadata.remote_address = address + ":" + std::to_string(port);
@@ -393,42 +458,60 @@ Value Scheduler::io_write(IOHandle* handle, const Value &val) {
         throw std::runtime_error("Cannot write to a closed I/O handler");
     }
 
-    IOOperation write_op;
-    write_op.type = IOOperation::Type::Write;
-    write_op.thread = vm.current_thread;
+    std::vector<uint8_t> write_bytes;
 
     if (val.is_string()) {
         const std::string &str = val.as_string();
-        write_op.write_bytes.assign(str.begin(), str.end());
+        write_bytes.assign(str.begin(), str.end());
     } else if (val.is_byte_array()) {
         ByteArray* byte_arr = val.as_byte_array();
-        write_op.write_bytes.assign(byte_arr->data.begin(), byte_arr->data.end());
+        write_bytes.assign(byte_arr->data.begin(), byte_arr->data.end());
     } else {
         throw std::runtime_error("Unsupported value type for write operation");
     }
 
-    while (write_op.write_progress < write_op.write_bytes.size()) {
-        ssize_t bytes_written = write(handle->fd,
-                                      write_op.write_bytes.data() + write_op.write_progress,
-                                      write_op.write_bytes.size() - write_op.write_progress);
+    size_t write_size = write_bytes.size();
+
+    if (handle->write_buffer.size() > 0) {
+        handle->write_buffer.insert(handle->write_buffer.end(), write_bytes.begin(), write_bytes.end());
+
+        IOOperation pending_write;
+        pending_write.type = IOOperation::Type::Write;
+        pending_write.thread = vm.current_thread;
+        pending_write.nbytes = handle->write_buffer.size();
+        handle->writes.push_back(pending_write);
+
+        handle->write_interest = true;
+
+        vm.current_thread->state = GreenThread::Blocked;
+        return 0;
+    }
+
+    while (write_bytes.size() > 0) {
+        ssize_t bytes_written = write(handle->fd, write_bytes.data(), write_bytes.size());
         if (bytes_written == -1) {
             if (errno != EAGAIN && errno != EWOULDBLOCK) {
                 throw std::runtime_error("Failed to write to I/O handler: " + std::string(strerror(errno)));
             }
 
+            handle->write_buffer.insert(handle->write_buffer.end(), write_bytes.begin(), write_bytes.end());
+
             handle->write_interest = true;
 
-            handle->writes.push_back(write_op);
+            IOOperation pending_write;
+            pending_write.type = IOOperation::Type::Write;
+            pending_write.thread = vm.current_thread;
+            pending_write.nbytes = write_bytes.size();
+            handle->writes.push_back(pending_write);
 
             vm.current_thread->state = GreenThread::Blocked;
-            vm.current_thread->wake_time = {};
             return 0;
         }
 
-        write_op.write_progress += bytes_written;
+        write_bytes.erase(write_bytes.begin(), write_bytes.begin() + bytes_written);
     }
 
-    return static_cast<int>(write_op.write_progress);
+    return static_cast<int>(write_size);
 }
 
 Value Scheduler::io_read_num_bytes(IOHandle* handle, size_t nbytes) {
@@ -461,6 +544,8 @@ Value Scheduler::io_read_num_bytes(IOHandle* handle, size_t nbytes) {
 
             vm.current_thread->state = GreenThread::Blocked;
             vm.current_thread->wake_time = {};
+
+            handle->eof_reached = false;
             return {};
         }
 
@@ -469,6 +554,7 @@ Value Scheduler::io_read_num_bytes(IOHandle* handle, size_t nbytes) {
             std::vector<uint8_t> remaining(handle->read_buffer.begin(), handle->read_buffer.end());
             handle->read_buffer.clear();
             auto result = vm.heap->allocate<ByteArray>(std::move(remaining));
+            handle->eof_reached = true;
             return result;
         }
 
@@ -513,6 +599,8 @@ Value Scheduler::io_read_until_delimiter(IOHandle* handle, uint8_t delimiter) {
 
             vm.current_thread->state = GreenThread::Blocked;
             vm.current_thread->wake_time = {};
+
+            handle->eof_reached = false;
             return {};
         }
 
@@ -521,6 +609,7 @@ Value Scheduler::io_read_until_delimiter(IOHandle* handle, uint8_t delimiter) {
             std::vector<uint8_t> remaining(handle->read_buffer.begin(), handle->read_buffer.end());
             handle->read_buffer.clear();
             auto result = vm.heap->allocate<ByteArray>(std::move(remaining));
+            handle->eof_reached = true;
             return result;
         }
 
@@ -564,10 +653,15 @@ Value Scheduler::io_read_all(IOHandle* handle) {
 
             vm.current_thread->state = GreenThread::Blocked;
             vm.current_thread->wake_time = {};
+
+            handle->eof_reached = false;
             return {};
         }
 
-        if (bytes_read == 0) break; // EOF reached
+        if (bytes_read == 0) {
+            handle->eof_reached = true;
+            break; // EOF reached
+        }
 
         handle->read_buffer.insert(handle->read_buffer.end(), chunk, chunk + bytes_read);
     }
@@ -593,8 +687,6 @@ Value Scheduler::io_accept(IOHandle* handle) {
             throw std::runtime_error("Failed to accept connection: " + std::string(strerror(errno)));
         }
 
-        std::cerr << "[I/O accept would block on handle " << handle->fd << ", blocking thread " << vm.current_thread->ID << "]\n";
-
         IOOperation pending_accept;
         pending_accept.type = IOOperation::Type::Accept;
         pending_accept.thread = vm.current_thread;
@@ -614,6 +706,8 @@ Value Scheduler::client_handle_from(int client_fd, IOHandle* handle, sockaddr_st
     set_non_blocking(client_fd);
 
     auto client_handle = vm.heap->allocate<IOHandle>();
+    vm.heap->connections++;
+
     client_handle->fd = client_fd;
 
     switch (handle->kind) {
@@ -655,6 +749,13 @@ void Scheduler::io_close(IOHandle* handle) {
         return; // Already closed, no-op
     }
 
+    struct stat st;
+    fstat(handle->fd, &st);
+
+    if (!S_ISREG(st.st_mode)) {
+        io_poller->remove_handle(handle);
+    }
+
     close(handle->fd);
     handle->closed = true;
     handle->read_interest = false;
@@ -688,8 +789,6 @@ void Scheduler::io_close(IOHandle* handle) {
         enqueue(pending_connect.thread);
     }
     handle->connects.clear();
-
-    io_poller->remove_handle(handle);
 }
 
 void Scheduler::complete_connects(IOHandle* handle) {
@@ -725,7 +824,7 @@ void Scheduler::complete_connects(IOHandle* handle) {
             enqueue(pending_connect.thread);
         } else {
             // Connection failed
-            pending_connect.thread->ctx.poke_stack({});
+            pending_connect.thread->ctx.poke_stack(handle);
             pending_connect.thread->state = GreenThread::Ready;
             enqueue(pending_connect.thread);
         }
@@ -734,10 +833,35 @@ void Scheduler::complete_connects(IOHandle* handle) {
     }
 }
 
+void Scheduler::drain_bytes(IOHandle* handle) {
+    while (true) {
+        // Not enough data in the buffer, try reading more from the file descriptor
+        uint8_t chunk[CHUNK_SIZE];
+        ssize_t bytes_received = read(handle->fd, chunk, CHUNK_SIZE);
+        if (bytes_received < 0) {
+            if (errno != EAGAIN && errno != EWOULDBLOCK) {
+                throw std::runtime_error("Failed to read data from stream: " + std::string(strerror(errno)));
+            }
+            handle->eof_reached = false;
+            return; // still not ready
+        }
+
+        if (bytes_received == 0) {
+            // EOF reached
+            handle->eof_reached = true;
+            return;
+        }
+
+        // Append the newly read data to the handle's read buffer
+        handle->read_buffer.insert(handle->read_buffer.end(), chunk, chunk + bytes_received);
+    }
+}
+
 void Scheduler::complete_reads(IOHandle* handle) {
-    std::cerr << "[Completing reads for socket " << handle->fd << "]\n";
+    drain_bytes(handle);
+
     while (!handle->reads.empty()) {
-        const auto &pending_read = handle->reads.front();
+        IOOperation pending_read = handle->reads.front();
         handle->reads.pop_front();
 
         switch (pending_read.type) {
@@ -767,28 +891,16 @@ void Scheduler::complete_reads(IOHandle* handle) {
 
 void Scheduler::complete_read_num_bytes(IOHandle* handle, const IOOperation &pending_read) {
     while (handle->read_buffer.size() < pending_read.nbytes) {
-        // Not enough data in the buffer, try reading more from the file descriptor
-        uint8_t chunk[CHUNK_SIZE];
-        ssize_t bytes_received = read(handle->fd, chunk, CHUNK_SIZE);
-        if (bytes_received < 0) {
-            if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                throw std::runtime_error("Failed to read data from stream: " + std::string(strerror(errno)));
-            }
-            return; // still not ready, stay blocked
-        }
-
-        if (bytes_received == 0) {
+        if (handle->eof_reached) {
             // EOF reached, return whatever we have in the buffer (if anything)
             std::vector<uint8_t> result = handle->read_buffer;
             handle->read_buffer.clear();
             pending_read.thread->ctx.poke_stack(vm.heap->allocate<ByteArray>(result));
             pending_read.thread->state = GreenThread::Ready;
             enqueue(pending_read.thread);
-            return;
         }
 
-        // Append the newly read data to the handle's read buffer
-        handle->read_buffer.insert(handle->read_buffer.end(), chunk, chunk + bytes_received);
+        return;
     }
 
     // We have enough data in the buffer to fulfill the read request
@@ -800,36 +912,20 @@ void Scheduler::complete_read_num_bytes(IOHandle* handle, const IOOperation &pen
 }
 
 void Scheduler::complete_read_until_delimiter(IOHandle* handle, const IOOperation &pending_read) {
-    std::cerr << "[Completing read until delimiter for socket " << handle->fd << "]\n";
     uint8_t delimiter = pending_read.delimiter;
 
     auto it = std::find(handle->read_buffer.begin(), handle->read_buffer.end(), delimiter);
     while (it == handle->read_buffer.end()) {
-        // Delimiter not found, try reading more from the file descriptor
-        uint8_t chunk[CHUNK_SIZE];
-        ssize_t bytes_received = read(handle->fd, chunk, CHUNK_SIZE);
-        if (bytes_received < 0) {
-            if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                throw std::runtime_error("Failed to read data from stream: " + std::string(strerror(errno)));
-            }
-            return; // still not ready, stay blocked
-        }
-
-        if (bytes_received == 0) {
+        if (handle->eof_reached) {
             // EOF reached, return whatever we have
             std::vector<uint8_t> result = handle->read_buffer;
             handle->read_buffer.clear();
             pending_read.thread->ctx.poke_stack(vm.heap->allocate<ByteArray>(result));
             pending_read.thread->state = GreenThread::Ready;
             enqueue(pending_read.thread);
-            return;
         }
 
-        // Append new data to the buffer and check for the delimiter again
-        handle->read_buffer.insert(handle->read_buffer.end(), chunk, chunk + bytes_received);
-
-        // Check for the delimiter again after reading more data
-        it = std::find(handle->read_buffer.end() - bytes_received, handle->read_buffer.end(), delimiter);
+        return;
     }
 
     // Delimiter found in buffer, return data up to the delimiter and remove it from the buffer
@@ -841,65 +937,52 @@ void Scheduler::complete_read_until_delimiter(IOHandle* handle, const IOOperatio
 }
 
 void Scheduler::complete_read_all(IOHandle* handle, const IOOperation &pending_read) {
-    while (true) {
-        uint8_t chunk[CHUNK_SIZE];
-        ssize_t bytes_received = read(handle->fd, chunk, CHUNK_SIZE);
-
-        if (bytes_received < 0) {
-            if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                throw std::runtime_error("Failed to read data from stream: " + std::string(strerror(errno)));
-            }
-            return; // still not ready, stay blocked
-        }
-
-        if (bytes_received == 0) {
-            // EOF reached
-            std::vector<uint8_t> result = handle->read_buffer;
-            handle->read_buffer.clear();
-            pending_read.thread->ctx.poke_stack(vm.heap->allocate<ByteArray>(result));
-            pending_read.thread->state = GreenThread::Ready;
-            enqueue(pending_read.thread);
-            return;
-        }
-
-        handle->read_buffer.insert(handle->read_buffer.end(), chunk, chunk + bytes_received);
+    if (handle->eof_reached) {
+        // EOF reached
+        std::vector<uint8_t> result = handle->read_buffer;
+        handle->read_buffer.clear();
+        pending_read.thread->ctx.poke_stack(vm.heap->allocate<ByteArray>(result));
+        pending_read.thread->state = GreenThread::Ready;
+        enqueue(pending_read.thread);
     }
 }
 
 void Scheduler::complete_writes(IOHandle* handle) {
-    while (!handle->writes.empty()) {
-        auto &pending_write = handle->writes.front();
-
-        complete_write(handle, pending_write);
-
-        if (pending_write.thread->state == GreenThread::Blocked) {
-            return; // still not ready, stay blocked
+    // First, flush the write buffer
+    size_t total_written = 0;
+    while (!handle->write_buffer.empty()) {
+        ssize_t bytes_written = write(handle->fd, handle->write_buffer.data(), handle->write_buffer.size());
+        if (bytes_written < 0) {
+            break;
         }
 
-        handle->writes.pop_front();
+        handle->write_buffer.erase(handle->write_buffer.begin(), handle->write_buffer.begin() + bytes_written);
+        total_written += bytes_written;
+    }
+
+    ssize_t bytes_remaining = total_written;
+
+    // Complete as many writes as possible, up to the total written
+    while (!handle->writes.empty() && bytes_remaining > 0) {
+        auto &pending_write = handle->writes.front();
+
+        // If the pending write is smaller than or equal to the remaining bytes, complete it
+        if (pending_write.nbytes <= bytes_remaining) {
+            bytes_remaining -= pending_write.nbytes;
+
+            pending_write.thread->ctx.poke_stack(static_cast<int>(pending_write.nbytes));
+            pending_write.thread->state = GreenThread::Ready;
+            enqueue(pending_write.thread);
+
+            handle->writes.pop_front();
+        } else {
+            // The pending write is larger than the remaining bytes, so complete as much as we can and leave the rest to be written later
+            pending_write.nbytes -= bytes_remaining;
+            bytes_remaining = 0;
+        }
     }
 
     handle->write_interest = false;
-}
-
-void Scheduler::complete_write(IOHandle* handle, IOOperation &pending_write) {
-    while (pending_write.write_progress < pending_write.write_bytes.size()) {
-        ssize_t bytes_written = write(handle->fd,
-                                      pending_write.write_bytes.data() + pending_write.write_progress,
-                                      pending_write.write_bytes.size() - pending_write.write_progress);
-        if (bytes_written < 0) {
-            if (errno != EAGAIN && errno != EWOULDBLOCK) {
-                throw std::runtime_error("Failed to write data on stream: " + std::string(strerror(errno)));
-            }
-            return; // still not ready, stay blocked
-        }
-
-        pending_write.write_progress += bytes_written;
-    }
-
-    pending_write.thread->ctx.poke_stack(static_cast<int>(pending_write.write_progress));
-    pending_write.thread->state = GreenThread::Ready;
-    enqueue(pending_write.thread);
 }
 
 void Scheduler::complete_accepts(IOHandle* handle) {
@@ -930,8 +1013,6 @@ void Scheduler::complete_accept(IOHandle* handle, const IOOperation &pending_acc
         }
         return; // still not ready, stay blocked
     }
-
-    std::cerr << "[Accepted new connection on socket " << handle->fd << " with fd " << client_fd << "]\n";
 
     auto client_handle = client_handle_from(client_fd, handle, client_addr);
 
@@ -984,9 +1065,10 @@ void Scheduler::handle_thread_state(GreenThread* &next_thread) {
 
 Value Scheduler::schedule() {
     while (vm.main_thread->state != GreenThread::Finished) {
-        if (vm_signal::suspend_requested) break;
-
-        std::cerr << "[Scheduler loop iteration]\n";
+        if (vm_signal::suspend_requested) {
+            // break;
+            if (vm.heap->connections == 0) break;
+        }
 
         auto now = std::chrono::steady_clock::now();
         wake_threads(now);
@@ -1002,7 +1084,7 @@ Value Scheduler::schedule() {
             if (!next_thread) continue;
         }
 
-        std::cerr << "[Scheduling thread " << next_thread->ID << "]\n";
+        // std::cerr << "[Scheduling thread " << next_thread->ID << "]\n";
 
         next_thread->state = GreenThread::Running;
 

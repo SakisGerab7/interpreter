@@ -3,6 +3,7 @@
 #include "value.hpp"
 #include "bytecode.hpp"
 #include "serializer.hpp"
+#include "deserializer.hpp"
 
 // Forward declarations
 struct Function;
@@ -22,22 +23,27 @@ struct IOHandle;
 struct VM;
 
 struct Serializer;
+struct Deserializer;
+
+#define SERDE(type) \
+    void serialize(Serializer& serializer) override { serializer.print_##type(this); } \
+    void deserialize(Deserializer& deserializer) override { deserializer.read_##type(this); }
 
 struct Object {
     enum class Type {
-        Function,
-        Native,
-        Closure,
-        MethodClosure,
-        Upvalue,
-        Array,
-        Record,
-        ByteArray,
-        Struct,
-        StructInstance,
-        Thread,
-        IOHandle,
-        Pipe
+        Function = 1,
+        Native = 2,
+        Closure = 3,
+        MethodClosure = 4,
+        Upvalue = 5,
+        Array = 6,
+        Record = 7,
+        ByteArray = 8,
+        Struct = 9,
+        StructInstance = 10,
+        Thread = 11,
+        IOHandle = 12,
+        Pipe = 13
     } type;
 
     size_t id; // for GC and debugging
@@ -50,8 +56,10 @@ struct Object {
     virtual std::string type_name() const = 0;
     virtual std::string to_string() const = 0;
     virtual bool is_truthy() const = 0;
-    virtual void serialize(Serializer& serializer) = 0;
     virtual size_t object_size() const = 0;
+
+    virtual void serialize(Serializer& serializer) = 0;
+    virtual void deserialize(Deserializer& deserializer) = 0;
 
     inline bool is_function()        const { return type == Type::Function;       }
     inline bool is_native()          const { return type == Type::Native;         }
@@ -88,8 +96,10 @@ using NativeFn = std::function<Value(VM&, const std::vector<Value> &)>;
 struct Function : public Object {
     std::string name;
     Chunk chunk;
-    int arity;
+    int arity = 0;
     int upvalue_count = 0;
+
+    Function() : Object(Type::Function) {}
 
     Function(const std::string &name, int arity)
         : Object(Type::Function), name(name), arity(arity) {}
@@ -97,7 +107,6 @@ struct Function : public Object {
     std::string type_name() const override { return "Function"; }
     std::string to_string() const override { return "<fn " + name + "/" + std::to_string(arity) + ">"; }
     bool is_truthy() const override { return true; }
-    void serialize(Serializer& serializer) override { serializer.print_function(this); }
     size_t object_size() const override {
         size_t size = sizeof(Function);
         size += name.capacity() * sizeof(char);
@@ -105,13 +114,17 @@ struct Function : public Object {
         size += chunk.constants.capacity() * sizeof(Value);
         return size;
     }
+
+    SERDE(function)
 };
 
 struct Native : public Object {
     std::string name;
-    int arity;
+    int arity = 0;
     NativeFn func;
     Value bound_instance; // for methods
+
+    Native() : Object(Type::Native) {}
 
     Native(const std::string &name, int arity, NativeFn func)
         : Object(Type::Native), name(name), arity(arity), func(std::move(func)) {}
@@ -119,18 +132,21 @@ struct Native : public Object {
     std::string type_name() const override { return "Native"; }
     std::string to_string() const override { return "<fn " + name + "/" + std::to_string(arity) + ">"; }
     bool is_truthy() const override { return true; }
-    void serialize(Serializer& serializer) override { serializer.print_native(this); }
     size_t object_size() const override {
         size_t size = sizeof(Native);
         size += name.capacity() * sizeof(char);
         return size;
     }
+
+    SERDE(native)
 };
 
 struct Upvalue : public Object {
-    GreenThread* owner_thread; // nullptr if closed
+    GreenThread* owner_thread = nullptr; // nullptr if closed
     int slot_index = -1;
     Value closed;
+
+    Upvalue() : Object(Type::Upvalue) {}
 
     Upvalue(GreenThread* thread, int slot)
         : Object(Type::Upvalue), owner_thread(thread), slot_index(slot), closed() {}
@@ -138,17 +154,20 @@ struct Upvalue : public Object {
     std::string type_name() const override { return "Upvalue"; }
     std::string to_string() const override { return get().to_string(); }
     bool is_truthy() const override { return get().is_truthy(); }
-    void serialize(Serializer& serializer) override { serializer.print_upvalue(this); }
     size_t object_size() const override { return sizeof(Upvalue); }
 
     Value get() const;
     void set(const Value &v);
+
+    SERDE(upvalue)
 };
 
 struct Closure : public Object {
-    Function* func;
+    Function* func = nullptr;
     std::vector<Upvalue*> upvalues;
-    int upvalue_count;
+    int upvalue_count = 0;
+
+    Closure() : Object(Type::Closure) {}
 
     Closure(Function* f)
         : Object(Type::Closure), func(std::move(f))
@@ -160,17 +179,20 @@ struct Closure : public Object {
     std::string type_name() const override { return "Closure"; }
     std::string to_string() const override { return func->to_string(); }
     bool is_truthy() const override { return true; }
-    void serialize(Serializer& serializer) override { serializer.print_closure(this); }
     size_t object_size() const override {
         size_t size = sizeof(Closure);
         size += upvalues.capacity() * sizeof(Upvalue*);
         return size;
     }
+
+    SERDE(closure)
 };
 
 struct MethodClosure : public Object {
-    Closure* closure;
+    Closure* closure = nullptr;
     Value self;
+
+    MethodClosure() : Object(Type::MethodClosure) {}
 
     MethodClosure(Closure* c, Value s)
         : Object(Type::MethodClosure), closure(std::move(c)), self(std::move(s)) {}
@@ -178,14 +200,16 @@ struct MethodClosure : public Object {
     std::string type_name() const override { return "MethodClosure"; }
     std::string to_string() const override { return closure->to_string(); }
     bool is_truthy() const override { return closure->is_truthy(); }
-    void serialize(Serializer& serializer) override { serializer.print_method_closure(this); }
     size_t object_size() const override { return sizeof(MethodClosure); }
+
+    SERDE(method_closure)
 };
 
 struct Array : public Object {
     std::vector<Value> elements;
 
     Array() : Object(Type::Array) {}
+
     Array(const std::vector<Value> &elements)
         : Object(Type::Array), elements(elements) {}
 
@@ -208,18 +232,20 @@ struct Array : public Object {
     std::string type_name() const override { return "Array"; }
     std::string to_string() const override;
     bool is_truthy() const override { return !empty(); }
-    void serialize(Serializer& serializer) override { serializer.print_array(this); }
     size_t object_size() const override {
         size_t size = sizeof(Array);
         size += elements.capacity() * sizeof(Value);
         return size;
     }
+
+    SERDE(array)
 };
 
 struct Record : public Object {
     std::unordered_map<std::string, Value> items;
 
     Record() : Object(Type::Record) {}
+
     Record(const std::unordered_map<std::string, Value> &map) : Object(Type::Record), items(map) {}
 
     inline size_t size() const { return items.size(); }
@@ -243,7 +269,6 @@ struct Record : public Object {
     std::string type_name() const override { return "Record"; }
     std::string to_string() const override;
     bool is_truthy() const override { return !empty(); }
-    void serialize(Serializer& serializer) override { serializer.print_record(this); }
     size_t object_size() const override {
         size_t size = sizeof(Record);
         size += items.bucket_count() * sizeof(void*);
@@ -253,12 +278,15 @@ struct Record : public Object {
         }
         return size;
     }
+
+    SERDE(record)
 };
 
 struct ByteArray : public Object {
     std::vector<uint8_t> data;
 
     ByteArray() : Object(Type::ByteArray) {}
+
     ByteArray(const std::vector<uint8_t> &data)
         : Object(Type::ByteArray), data(data) {}
 
@@ -281,17 +309,20 @@ struct ByteArray : public Object {
     std::string type_name() const override { return "ByteArray"; }
     std::string to_string() const override;
     bool is_truthy() const override { return !empty(); }
-    void serialize(Serializer& serializer) override { serializer.print_byte_array(this); }
     size_t object_size() const override {
         size_t size = sizeof(ByteArray);
         size += data.capacity() * sizeof(uint8_t);
         return size;
     }
+
+    SERDE(byte_array)
 };
 
 struct Struct : public Object {
     std::string name;
     std::unordered_map<std::string, Value> methods;
+
+    Struct() : Object(Type::Struct) {}
 
     Struct(const std::string &name)
         : Object(Type::Struct), name(name) {}
@@ -303,7 +334,6 @@ struct Struct : public Object {
     std::string type_name() const override { return "Struct"; }
     std::string to_string() const override { return "<struct " + name + ">"; };
     bool is_truthy() const override { return true; }
-    void serialize(Serializer& serializer) override { serializer.print_struct(this); }
     size_t object_size() const override {
         size_t size = sizeof(Struct);
         size += name.capacity() * sizeof(char);
@@ -314,11 +344,15 @@ struct Struct : public Object {
         }
         return size;
     }
+
+    SERDE(struct)
 };
 
 struct StructInstance : public Object {
-    Struct* struct_ptr;
+    Struct* struct_ptr = nullptr;
     std::unordered_map<std::string, Value> fields;
+
+    StructInstance() : Object(Type::StructInstance) {}
 
     StructInstance(Struct* strct)
         : Object(Type::StructInstance), struct_ptr(std::move(strct)) {}
@@ -336,7 +370,6 @@ struct StructInstance : public Object {
     std::string type_name() const override { return "StructInstance"; }
     std::string to_string() const override { return "<instance of '" + std::string(struct_ptr->name) + "'>"; };
     bool is_truthy() const override { return true; }
-    void serialize(Serializer& serializer) override { serializer.print_struct_instance(this); }
     size_t object_size() const override {
         size_t size = sizeof(StructInstance);
         size += fields.bucket_count() * sizeof(void*);
@@ -346,4 +379,6 @@ struct StructInstance : public Object {
         }
         return size;
     }
+
+    SERDE(struct_instance)
 };

@@ -1,13 +1,14 @@
 #pragma once
 
 #include "green_thread.hpp"
+#include "runtime.hpp"
 #include "value.hpp"
 
 struct VM;
 
 struct Pipe : public Object {
-    size_t ID;
-    size_t capacity;
+    size_t ID = 0;
+    size_t capacity = 0;
     bool closed = false;
 
     std::deque<Value> buffer;
@@ -17,12 +18,13 @@ struct Pipe : public Object {
 
     std::vector<GreenThread*> selectors;
 
+    Pipe() : Object(Type::Pipe) {}
+
     Pipe(size_t id, size_t cap) : Object(Type::Pipe), ID(id), capacity(cap) {}
 
     std::string type_name() const override { return "Pipe"; }
     std::string to_string() const override { return "<pipe " + std::to_string(ID) + ">"; }
     bool is_truthy() const override { return !closed || !buffer.empty(); }
-    void serialize(Serializer& serializer) override { serializer.print_pipe(this); }
     size_t object_size() const override {
         size_t size = sizeof(Pipe);
         size += buffer.size() * sizeof(Value);
@@ -40,6 +42,8 @@ struct Pipe : public Object {
     void send(const Value &value, VM &vm);
     Value recv(VM &vm);
     void close(VM &vm);
+
+    SERDE(pipe)
 };
 
 struct SelectCase {

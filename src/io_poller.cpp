@@ -1,5 +1,5 @@
 #include "io_poller.hpp"
-#include <iostream>
+#include <cerrno>
 
 EpollPoller::EpollPoller() {
     epoll_fd = epoll_create1(0);
@@ -18,7 +18,7 @@ void EpollPoller::add_handle(IOHandle* handle) {
     event.events = EPOLLIN | EPOLLOUT | EPOLLET; // Edge-triggered for better performance
 
     if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, handle->fd, &event) == -1) {
-        throw std::runtime_error("Failed to add io_handler to epoll");
+        throw std::runtime_error("Failed to add io_handler to epoll: " + std::string(strerror(errno)));
     }
 
     handle_map[handle->fd] = handle;
@@ -26,7 +26,7 @@ void EpollPoller::add_handle(IOHandle* handle) {
 
 void EpollPoller::remove_handle(IOHandle* handle) {
     if (epoll_ctl(epoll_fd, EPOLL_CTL_DEL, handle->fd, nullptr) == -1) {
-        throw std::runtime_error("Failed to remove io_handler from epoll");
+        throw std::runtime_error("Failed to remove io_handler from epoll: " + std::string(strerror(errno)));
     }
 
     handle_map.erase(handle->fd);
@@ -37,9 +37,10 @@ void EpollPoller::poll(int timeout_ms, std::function<void(const IOEvent& event)>
     static constexpr int MAX_EVENTS = 64;
     struct epoll_event epoll_events[MAX_EVENTS];
 
-    int num_events = epoll_wait(epoll_fd, epoll_events, MAX_EVENTS, timeout_ms);
+    int num_events = epoll_wait(epoll_fd, epoll_events, MAX_EVENTS, (timeout_ms >= 0) ? timeout_ms : -1);
     if (num_events == -1) {
-        throw std::runtime_error("Failed to wait for epoll events");
+        if (errno == EINTR) return;
+        throw std::runtime_error("Failed to wait for epoll events: " + std::string(strerror(errno)));
     }
 
     for (int i = 0; i < num_events; ++i) {
@@ -106,11 +107,16 @@ void SelectPoller::poll(int timeout_ms, std::function<void(const IOEvent& event)
     fd_set write_fds_copy = write_fds;
     fd_set error_fds_copy = error_fds;
 
-    struct timeval timeout;
-    timeout.tv_sec = timeout_ms / 1000;
-    timeout.tv_usec = (timeout_ms % 1000) * 1000;
+    int num_events = 0;
+    if (timeout_ms >= 0) {
+        struct timeval timeout;
+        timeout.tv_sec = timeout_ms / 1000;
+        timeout.tv_usec = (timeout_ms % 1000) * 1000;
+        num_events = select(max_fd + 1, &read_fds_copy, &write_fds_copy, &error_fds_copy, &timeout);
+    } else {
+        num_events = select(max_fd + 1, &read_fds_copy, &write_fds_copy, &error_fds_copy, nullptr);
+    }
 
-    int num_events = select(max_fd + 1, &read_fds_copy, &write_fds_copy, &error_fds_copy, &timeout);
     if (num_events == -1) {
         throw std::runtime_error("Failed to wait for select events: " + std::string(strerror(errno)));
     }

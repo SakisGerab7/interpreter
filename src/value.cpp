@@ -9,7 +9,11 @@ inline std::string Array::to_string() const {
     std::stringstream ss;
     ss << "[";
     for (size_t i = 0; i < elements.size(); ++i) {
-        ss << elements[i].to_string();
+        if (elements[i].is_string()) {
+            ss << "\"" << elements[i].as_string() << "\"";
+        } else {
+            ss << elements[i].to_string();
+        }
         if (i < elements.size() - 1) ss << ", ";
     }
 
@@ -22,7 +26,11 @@ inline std::string Record::to_string() const {
     ss << "{";
     size_t count = 0;
     for (const auto &[key, value] : items) {
-        ss << "\"" << key << "\": " << value.to_string();
+        if (value.is_string()) {
+            ss << "\"" << key << "\": \"" << value.as_string() << "\"";
+        } else {
+            ss << "\"" << key << "\": " << value.to_string();
+        }
         if (count < items.size() - 1) ss << ", ";
         count++;
     }

@@ -32,6 +32,9 @@ fn broadcast() {
 
 fn handle_connection(conn) {
     let name_len = unpack(conn.read(4), "u32");
+
+    disp "name length = " + name_len;
+
     let username = conn.read(name_len).str();
     let new_client = Client(conn, username);
     clients.push(new_client);

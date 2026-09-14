@@ -1,9 +1,9 @@
 #include "vm.hpp"
 #include "bytecode.hpp"
+#include "deserializer.hpp"
 #include "native_functions.hpp"
 #include "runtime.hpp"
 #include "value.hpp"
-#include <cstdint>
 
 #define PROFILING_ENABLED false
 
@@ -24,7 +24,99 @@ struct OpTimer {
     }
 };
 
-VM::VM(const std::vector<std::string> &args, Heap* heap_ptr) : scheduler(*this), heap(heap_ptr) {
+namespace {
+    struct NativeRegistration {
+        const char* name;
+        int arity;
+        NativeFn func;
+    };
+
+    const std::vector<NativeRegistration>& builtin_native_registrations() {
+        static const std::vector<NativeRegistration> registrations = {
+            {"cli_args", 0, native_functions::cli_args},
+
+            {"clock", 0, native_functions::clock},
+            {"len",   1, native_functions::len},
+            {"str",   1, native_functions::str},
+            {"int",   1, native_functions::int_fn},
+            {"float", 1, native_functions::float_fn},
+            {"type",  1, native_functions::type},
+
+            {"String.upper", 0, native_functions::string::to_upper},
+            {"String.lower", 0, native_functions::string::to_lower},
+            {"String.trim",  0, native_functions::string::trim},
+            {"String.split", 1, native_functions::string::split},
+            {"String.bytes", 0, native_functions::string::to_byte_array},
+
+            {"ByteArray.str", 0, native_functions::byte_array::to_string},
+
+            {"arange",        3, native_functions::array::arange},
+            {"Array.push",    1, native_functions::array::push},
+            {"Array.pop",     0, native_functions::array::pop},
+            {"Array.shift",   0, native_functions::array::shift},
+            {"Array.unshift", 1, native_functions::array::unshift},
+            {"Array.slice",   2, native_functions::array::slice},
+            {"Array.sum",     0, native_functions::array::sum},
+            {"Array.for_each", 1, native_functions::array::foreach},
+            {"Array.map",      1, native_functions::array::map},
+            {"Array.reduce",   2, native_functions::array::reduce},
+
+            {"pow",     2, native_functions::math::pow},
+            {"abs",     1, native_functions::math::abs},
+            {"round",   1, native_functions::math::round},
+            {"sqrt",    1, native_functions::math::sqrt},
+            {"sin",     1, native_functions::math::sin},
+            {"cos",     1, native_functions::math::cos},
+            {"tan",     1, native_functions::math::tan},
+            {"floor",   1, native_functions::math::floor},
+            {"ceil",    1, native_functions::math::ceil},
+            {"min",     2, native_functions::math::min},
+            {"max",     2, native_functions::math::max},
+            {"srand",   1, native_functions::math::srand},
+            {"rand",    0, native_functions::math::rand},
+            {"randint", 2, native_functions::math::randint},
+            {"asin",    1, native_functions::math::asin},
+            {"acos",    1, native_functions::math::acos},
+            {"atan",    1, native_functions::math::atan},
+            {"log2",    1, native_functions::math::log2},
+            {"log10",   1, native_functions::math::log10},
+            {"ln",      1, native_functions::math::ln},
+            {"exp",     1, native_functions::math::exp},
+
+            {"sleep",     1, native_functions::sleep},
+            {"thread_id", 0, native_functions::thread_id},
+            {"Thread.join",   0, native_functions::join},
+            {"Thread.detach", 0, native_functions::detach},
+            {"pipe", 1, native_functions::pipe},
+
+            {"listen",  2, native_functions::listen},
+            {"connect", 2, native_functions::connect},
+            {"open",    2, native_functions::open},
+            {"IOHandle.read", 1, native_functions::io::read},
+            {"IOHandle.read_until_delimiter", 1, native_functions::io::read_until_delimiter},
+            {"IOHandle.read_line", 0, native_functions::io::read_line},
+            {"IOHandle.read_all", 0, native_functions::io::read_all},
+            {"IOHandle.write", 1, native_functions::io::write},
+            {"IOHandle.accept", 0, native_functions::io::accept},
+            {"IOHandle.close_", 0, native_functions::io::close},
+
+            {"pack",   2, native_functions::pack},
+            {"unpack", 2, native_functions::unpack},
+        };
+
+        return registrations;
+    }
+}
+
+VM::VM(const std::vector<std::string> &args, Heap* heap_ptr, bool initialize_runtime) : scheduler(*this), heap(heap_ptr) {
+    for (const auto &entry : builtin_native_registrations()) {
+        native_registry[{entry.name, entry.arity}] = entry.func;
+    }
+
+    if (!initialize_runtime) {
+        return;
+    }
+
     std::vector<Value> arg_values;
     for (const auto &arg : args) {
         arg_values.push_back(arg);
@@ -32,86 +124,33 @@ VM::VM(const std::vector<std::string> &args, Heap* heap_ptr) : scheduler(*this),
 
     cli_arguments = heap->allocate<Array>(arg_values);
 
-    // define native functions here if needed
-    define_native("cli_args", 0, native_functions::cli_args);
-
-    define_native("clock", 0, native_functions::clock);
-    define_native("len",   1, native_functions::len);
-    define_native("str",   1, native_functions::str);
-    define_native("int",   1, native_functions::int_fn);
-    define_native("float", 1, native_functions::float_fn);
-    define_native("type",  1, native_functions::type);
-
-    define_native("String.upper", 0, native_functions::string::to_upper);
-    define_native("String.lower", 0, native_functions::string::to_lower);
-    define_native("String.trim",  0, native_functions::string::trim);
-    define_native("String.split", 1, native_functions::string::split);
-    define_native("String.bytes", 0, native_functions::string::to_byte_array);
-
-    define_native("ByteArray.str", 0, native_functions::byte_array::to_string);
-
-    define_native("arange", 3, native_functions::array::arange);
-    define_native("Array.push",    1, native_functions::array::push);
-    define_native("Array.pop",     0, native_functions::array::pop);
-    define_native("Array.shift",   0, native_functions::array::shift);
-    define_native("Array.unshift", 1, native_functions::array::unshift);
-    define_native("Array.slice",   2, native_functions::array::slice);
-    define_native("Array.sum",     0, native_functions::array::sum);
-
-    define_native("Array.for_each", 1, native_functions::array::foreach);
-    define_native("Array.map",      1, native_functions::array::map);
-
     globals["pi"] = M_PI;
-    define_native("pow",     2, native_functions::math::pow);
-    define_native("abs",     1, native_functions::math::abs);
-    define_native("round",   1, native_functions::math::round);
-    define_native("sqrt",    1, native_functions::math::sqrt);
-    define_native("sin",     1, native_functions::math::sin);
-    define_native("cos",     1, native_functions::math::cos);
-    define_native("tan",     1, native_functions::math::tan);
-    define_native("floor",   1, native_functions::math::floor);
-    define_native("ceil",    1, native_functions::math::ceil);
-    define_native("min",     2, native_functions::math::min);
-    define_native("max",     2, native_functions::math::max);
-    define_native("srand",   1, native_functions::math::srand);
-    define_native("rand",    0, native_functions::math::rand);
-    define_native("randint", 2, native_functions::math::randint);
-    define_native("asin",    1, native_functions::math::asin);
-    define_native("acos",    1, native_functions::math::acos);
-    define_native("atan",    1, native_functions::math::atan);
-    define_native("log2",    1, native_functions::math::log2);
-    define_native("log10",   1, native_functions::math::log10);
-    define_native("ln",      1, native_functions::math::ln);
-    define_native("exp",     1, native_functions::math::exp);
-
-    define_native("sleep",     1, native_functions::sleep);
-    define_native("thread_id", 0, native_functions::thread_id);
-
-    define_native("Thread.join", 0, native_functions::join);
-    define_native("Thread.detach", 0, native_functions::detach);
-
-    define_native("pipe", 1, native_functions::pipe);
 
     // I/O related globals
     globals["stdin"] = scheduler.stdin_handle();
     globals["stdout"] = scheduler.stdout_handle();
     globals["stderr"] = heap->allocate<IOHandle>();
 
-    // I/O related natives
-    define_native("listen",  2, native_functions::listen);
-    define_native("connect", 2, native_functions::connect);
-    define_native("open",    2, native_functions::open);
+    for (const auto &entry : builtin_native_registrations()) {
+        define_native(entry.name, entry.arity, entry.func);
+    }
+}
 
-    define_native("IOHandle.read", 1, native_functions::io::read);
-    define_native("IOHandle.read_until_delimiter", 1, native_functions::io::read_until_delimiter);
-    define_native("IOHandle.read_line", 0, native_functions::io::read_line);
-    define_native("IOHandle.read_all", 0, native_functions::io::read_all);
-    define_native("IOHandle.write", 1, native_functions::io::write);
-    define_native("IOHandle.accept", 0, native_functions::io::accept);
-    define_native("IOHandle.close_", 0, native_functions::io::close);
+std::unique_ptr<VM> VM::create(const std::vector<std::string> &args, Heap* heap_ptr) {
+    return std::make_unique<VM>(args, heap_ptr, true);
+}
 
-    define_native("pack",   2, native_functions::pack);
-    define_native("unpack", 2, native_functions::unpack);
+std::unique_ptr<VM> VM::load(const std::string &state_file, Heap* heap_ptr, const std::vector<std::string> &args) {
+    auto vm = std::make_unique<VM>(args, heap_ptr, false);
+
+    std::ifstream in(state_file, std::ios::binary);
+    if (!in) {
+        throw std::runtime_error("Error: could not open state file " + state_file);
+    }
+
+    BinaryDeserializer deserializer(in);
+    deserializer.read_vm(*vm);
+    return vm;
 }
 
 void VM::spawn_thread(Closure* closure, size_t thread_count) {
@@ -141,13 +180,9 @@ Value VM::interpret(Function* func) {
     Closure* closure = heap->allocate<Closure>(func);
     spawn_thread(closure, 1);
 
-    std::cerr << "Starting VM with main thread ID " << main_thread->ID << " (state: " << main_thread->state << ")\n";
-
     heap->active_vm = this; // set active VM for GC
 
     Value result = scheduler.schedule();
-
-    std::cerr << "VM execution finished. Result: " << result.to_string() << "\n";
 
 #if PROFILING_ENABLED
     dump_profile();
@@ -157,7 +192,30 @@ Value VM::interpret(Function* func) {
     return result;
 }
 
+Value VM::resume() {
+    heap->active_vm = this; // set active VM for GC
+
+    Value result = scheduler.schedule();
+
+#if PROFILING_ENABLED
+    dump_profile();
+    profile_dumped = true;
+#endif
+
+    return result;
+}
+
+NativeFn VM::resolve_native(const std::string &name, int arity) const {
+    auto it = native_registry.find({name, arity});
+    if (it == native_registry.end()) {
+        throw std::runtime_error("Unknown native function '" + name + "/" + std::to_string(arity) + "'");
+    }
+
+    return it->second;
+}
+
 void VM::define_native(const std::string &name, int arity, NativeFn func) {
+    native_registry[{name, arity}] = func;
     globals[name] = heap->allocate<Native>(name, arity, func);
 }
 
@@ -171,7 +229,6 @@ void VM::bind_native_method(const Value &obj, const std::string &method_name) {
     method->bound_instance = obj;
     push(method);
 }
-
 
 void VM::call_value(const Value &callee, int arg_count) {
     if (callee.is_closure()) {
@@ -347,21 +404,47 @@ void VM::debug_instruction(CallFrame &frame, OpCode op) {
 }
 
 std::string VM::stack_trace() const {
-    std::string trace;
-    for (auto it = current_thread->ctx.frames.rbegin(); it != current_thread->ctx.frames.rend(); ++it) {
-        auto &frame = *it;
-        trace += "  at " + frame.closure->func->to_string() + "\n";
+    std::stringstream trace;
+    if (!current_thread) {
+        return "  <no running thread>\n";
     }
 
-    return trace;
+    const auto &frames = current_thread->ctx.frames;
+    if (frames.empty()) {
+        return "  <empty call stack>\n";
+    }
+
+    size_t frame_no = 0;
+    for (auto it = frames.rbegin(); it != frames.rend(); ++it, ++frame_no) {
+        const auto &frame = *it;
+        const auto *closure = frame.closure;
+        const auto *func = closure ? closure->func : nullptr;
+        const auto &func_name = (func && !func->name.empty()) ? func->name : std::string("<anonymous>");
+
+        int opcode_ip = frame.ip > 0 ? frame.ip - 1 : frame.ip;
+        size_t code_size = (func ? func->chunk.code.size() : 0);
+
+        trace << "  #" << frame_no
+              << " at <fn " << func_name << "/" << (func ? func->arity : 0) << ">"
+              << " (ip=" << opcode_ip << "/" << code_size
+              << ", base=" << frame.base << ")\n";
+    }
+
+    return trace.str();
 }
 
 void VM::run() {
     while (true) {
-        if (vm_signal::suspend_requested) [[unlikely]] return;
+        if (vm_signal::suspend_requested) [[unlikely]] {
+            // Suspend requested, invoke garbage collector
+            // return;
+            heap->collect_garbage();
+            if (heap->connections == 0) return;
+        }
 
         if (current_thread->ctx.frames.empty()) [[unlikely]] {
             current_thread->state = GreenThread::Finished;
+            heap->collect_garbage();
             return;
         }
 
@@ -371,6 +454,7 @@ void VM::run() {
             current_thread->ctx.frames.pop_back();
             if (current_thread->ctx.frames.empty()) [[unlikely]] {
                 current_thread->state = GreenThread::Finished;
+                heap->collect_garbage();
                 return;
             }
             continue;
@@ -385,7 +469,7 @@ void VM::run() {
         OpTimer timer(*this, static_cast<uint8_t>(op));
 #endif
 
-        debug_instruction(current_frame, op);
+        // debug_instruction(current_frame, op);
 
         switch (op) {
             case OP_NULL:  push({});    break;
@@ -568,6 +652,7 @@ void VM::run() {
                 if (current_thread->ctx.frames.empty()) {
                     current_thread->state = GreenThread::Finished;
                     current_thread->return_value = ret_val;
+                    heap->collect_garbage();
                     return;
                 }
 
@@ -837,7 +922,9 @@ void VM::run() {
                 throw std::runtime_error("Unknown opcode " + std::to_string((int)op));
         }
 
-        if (current_thread->state != GreenThread::Running) [[unlikely]] return;
+        if (current_thread->state != GreenThread::Running) [[unlikely]] {
+            return;
+        }
     }
 }
 
@@ -899,14 +986,14 @@ inline void VM::unary_op(OpCode op) {
 }
 
 Array* VM::concat_array(Array* a, Array* b) {
-    std::vector<Value> combined(a->size() + b->size());
+    std::vector<Value> combined;
     combined.insert(combined.end(), a->begin(), a->end());
     combined.insert(combined.end(), b->begin(), b->end());
     return heap->allocate<Array>(combined);
 }
 
 ByteArray* VM::concat_bytearray(ByteArray* a, ByteArray* b) {
-    std::vector<uint8_t> combined(a->size() + b->size());
+    std::vector<uint8_t> combined;
     combined.insert(combined.end(), a->begin(), a->end());
     combined.insert(combined.end(), b->begin(), b->end());
     return heap->allocate<ByteArray>(combined);

@@ -5,6 +5,12 @@ let conn = connect("tcp", { host: "127.0.0.1", port: 8080 });
 disp username + " connected. local address: " + conn.local_addr + ". remote address: " + conn.remote_addr;
 
 let payload = pack(len(username), "u32") + username.bytes();
+
+let a = pack(len(username), "u32");
+let b = username.bytes();
+
+disp "sending " + (a + b) + " (" + len(username) + " packed is " + a + ", bytes are " + b + ")";
+
 conn.write(payload);
 
 while true {
